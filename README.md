@@ -27,7 +27,7 @@ This project synchronizes your Stripe account to a PostgreSQL database. It can b
 The easiest way to integrate Stripe sync into your Express application:
 
 ```typescript
-import { StripeAutoSync } from 'stripe-experiment-sync'
+import { StripeAutoSync } from 'stripe-replit-sync'
 
 // baseUrl is a function for dynamic URL generation
 // (e.g., for ngrok tunnels, Replit domains, or environment-based URLs)
