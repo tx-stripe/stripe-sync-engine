@@ -23,50 +23,11 @@ pnpm add stripe-replit-sync stripe
 yarn add stripe-replit-sync stripe
 ```
 
-## StripeAutoSync
+## Usage
 
-The easiest way to integrate Stripe sync into your Express application:
+Initialize the `StripeSync` class with your configuration:
 
 ```typescript
-import { StripeAutoSync } from 'stripe-replit-sync'
-
-// baseUrl is a function for dynamic URL generation
-// (e.g., for ngrok tunnels, Replit domains, or environment-based URLs)
-const getPublicUrl = () => {
-  if (process.env.PUBLIC_URL) {
-    return process.env.PUBLIC_URL
-  }
-  // Or dynamically determine from request, ngrok, etc.
-  return `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`
-}
-
-const stripeAutoSync = new StripeAutoSync({
-  databaseUrl: process.env.DATABASE_URL,
-  stripeApiKey: process.env.STRIPE_SECRET_KEY,
-  baseUrl: getPublicUrl,
-})
-
-await stripeAutoSync.start(app) // Express app
-// ... later
-await stripeAutoSync.stop() // Cleanup
-```
-
-### Configuration Options
-
-| Option | Required | Default | Description |
-|--------|----------|---------|-------------|
-| `databaseUrl` | Yes | - | PostgreSQL connection string |
-| `stripeApiKey` | Yes | - | Stripe secret key (sk_...) |
-| `baseUrl` | Yes | - | Function returning your public URL |
-| `webhookPath` | No | `/stripe-webhooks` | Path where webhook handler is mounted |
-| `schema` | No | `stripe` | Database schema name |
-| `stripeApiVersion` | No | `2020-08-27` | Stripe API version |
-
-## Low-Level API (Advanced)
-
-For more control, you can use the `StripeSync` class directly:
-
-```ts
 import { StripeSync } from 'stripe-replit-sync'
 
 const sync = new StripeSync({
@@ -75,29 +36,73 @@ const sync = new StripeSync({
     max: 10, // Maximum number of connections
   },
   stripeSecretKey: 'sk_test_...',
+  // Optional: webhook secret for signature validation
   stripeWebhookSecret: 'whsec_...',
-  // logger: <a pino logger>
+  // Optional: pino logger instance
+  logger: myLogger,
 })
-
-// Example: process a Stripe webhook
-await sync.processWebhook(payload, signature)
 ```
+
+### Processing Webhooks
+
+```typescript
+// Process a webhook with signature validation
+await sync.processWebhook(payload, signature, uuid)
+
+// Or process an event directly
+await sync.processEvent(event)
+```
+
+### Managed Webhook Endpoints
+
+The library provides methods to create and manage webhook endpoints with UUID-based routing for security:
+
+```typescript
+// Create or reuse an existing webhook endpoint for a base URL
+const { webhook, uuid } = await sync.findOrCreateManagedWebhook(
+  'https://example.com/stripe-webhooks',
+  {
+    enabled_events: ['*'], // or specific events like ['customer.created', 'invoice.paid']
+    description: 'My app webhook',
+  }
+)
+// webhook.url will be: https://example.com/stripe-webhooks/{uuid}
+
+// Create a new webhook endpoint (always creates new)
+const { webhook, uuid } = await sync.createManagedWebhook(
+  'https://example.com/stripe-webhooks',
+  {
+    enabled_events: ['customer.created', 'customer.updated'],
+  }
+)
+
+// Get a managed webhook by ID
+const webhook = await sync.getManagedWebhook('we_xxx')
+
+// Delete a managed webhook
+await sync.deleteManagedWebhook('we_xxx')
+```
+
+The UUID-based routing allows multiple webhook endpoints for the same base URL, making it ideal for:
+- Development environments with ngrok/tunnels that change URLs
+- Multi-tenant applications
+- Testing and staging environments
 
 ## Configuration
 
 | Option                          | Type    | Description                                                                                                                                                                                                                                                                                              |
 | ------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `databaseUrl`                   | string  | **Deprecated:** Use `poolConfig` with a connection string instead.                                                                                                                                                                                                                                       |
-| `schema`                        | string  | Database schema name (default: `stripe`)                                                                                                                                                                                                                                                                 |
-| `stripeSecretKey`               | string  | Stripe secret key                                                                                                                                                                                                                                                                                        |
-| `stripeWebhookSecret`           | string  | Stripe webhook signing secret                                                                                                                                                                                                                                                                            |
-| `stripeApiVersion`              | string  | Stripe API version (default: `2020-08-27`)                                                                                                                                                                                                                                                               |
-| `autoExpandLists`               | boolean | Fetch all list items from Stripe (not just the default 10)                                                                                                                                                                                                                                               |
-| `backfillRelatedEntities`       | boolean | Ensure related entities are present for foreign key integrity                                                                                                                                                                                                                                            |
-| `revalidateObjectsViaStripeApi` | Array   | Always fetch latest entity from Stripe instead of trusting webhook payload, possible values: charge, credit_note, customer, dispute, invoice, payment_intent, payment_method, plan, price, product, refund, review, radar.early_fraud_warning, setup_intent, subscription, subscription_schedule, tax_id |
-| `poolConfig`                    | object  | Configuration for PostgreSQL connection pooling. Supports options like `connectionString`, `max`, and `keepAlive`. For more details, refer to the [Node-Postgres Pool API documentation](https://node-postgres.com/apis/pool).                                                                           |
-| `maxPostgresConnections`        | number  | **Deprecated:** Use `poolConfig.max` instead to configure the maximum number of PostgreSQL connections.                                                                                                                                                                                                  |
-| `logger`                        | Logger  | Logger instance (pino)                                                                                                                                                                                                                                                                                   |
+| `poolConfig` | object | **Required.** PostgreSQL connection configuration. Supports `connectionString`, `max` (pool size), `keepAlive`, and other [node-postgres pool options](https://node-postgres.com/apis/pool) |
+| `stripeSecretKey` | string | **Required.** Your Stripe API secret key (starts with `sk_test_` or `sk_live_`) |
+| `stripeWebhookSecret` | string | Optional. Stripe webhook signing secret for validating webhook signatures |
+| `schema` | string | Optional. Database schema name. Default: `stripe` |
+| `stripeApiVersion` | string | Optional. Stripe API version. Default: `2020-08-27` |
+| `autoExpandLists` | boolean | Optional. Automatically fetch all items in paginated lists (instead of default 10). Default: `false` |
+| `backfillRelatedEntities` | boolean | Optional. Ensure related entities exist for foreign key integrity. Default: `false` |
+| `revalidateObjectsViaStripeApi` | string[] | Optional. Array of entity types to always fetch from Stripe API instead of trusting webhook payload. Possible values: `charge`, `credit_note`, `customer`, `dispute`, `invoice`, `payment_intent`, `payment_method`, `plan`, `price`, `product`, `refund`, `review`, `radar.early_fraud_warning`, `setup_intent`, `subscription`, `subscription_schedule`, `tax_id`, `entitlements` |
+| `logger` | Logger | Optional. Pino logger instance for logging |
+| `databaseUrl` | string | **Deprecated.** Use `poolConfig.connectionString` instead |
+| `maxPostgresConnections` | number | **Deprecated.** Use `poolConfig.max` instead |
 
 ## Database Schema
 
@@ -105,12 +110,15 @@ The library will create and manage a `stripe` schema in your PostgreSQL database
 
 ### Migrations
 
-Migrations are included in the `db/migrations` directory. You can run them using the provided `runMigrations` function:
+Database migrations are automatically bundled with the package. Run them using the `runMigrations` function:
 
-```ts
-import { runMigrations } from '@supabase/stripe-sync-engine'
+```typescript
+import { runMigrations } from 'stripe-replit-sync'
 
-await runMigrations({ databaseUrl: 'postgres://...' })
+await runMigrations({
+  databaseUrl: 'postgres://user:pass@host:port/db',
+  schema: 'stripe' // optional, defaults to 'stripe'
+})
 ```
 
 ## Backfilling and Syncing Data
