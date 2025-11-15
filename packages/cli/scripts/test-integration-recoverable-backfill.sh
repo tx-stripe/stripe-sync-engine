@@ -169,9 +169,10 @@ else
 fi
 
 # Check cursor was saved (partial progress preserved)
-CURSOR_AFTER_ERROR=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT last_incremental_cursor FROM stripe._sync_status WHERE resource = 'products';" 2>/dev/null | tr -d ' ' || echo "0")
+CURSOR_AFTER_ERROR=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COALESCE(EXTRACT(EPOCH FROM last_incremental_cursor)::integer, 0) FROM stripe._sync_status WHERE resource = 'products';" 2>/dev/null | tr -d ' ' || echo "0")
+CURSOR_AFTER_ERROR_DISPLAY=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT last_incremental_cursor FROM stripe._sync_status WHERE resource = 'products';" 2>/dev/null | tr -d ' ')
 if [ "$CURSOR_AFTER_ERROR" -gt 0 ]; then
-    echo "   ✓ Cursor saved: $CURSOR_AFTER_ERROR (partial progress preserved)"
+    echo "   ✓ Cursor saved: $CURSOR_AFTER_ERROR_DISPLAY (epoch: $CURSOR_AFTER_ERROR, partial progress preserved)"
 else
     echo "   ℹ️  No cursor saved yet"
 fi
@@ -214,7 +215,7 @@ else
 fi
 
 # Check cursor advanced or maintained (never decreased)
-FINAL_CURSOR=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COALESCE(last_incremental_cursor, 0) FROM stripe._sync_status WHERE resource = 'products';" 2>/dev/null | tr -d ' ')
+FINAL_CURSOR=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COALESCE(EXTRACT(EPOCH FROM last_incremental_cursor)::integer, 0) FROM stripe._sync_status WHERE resource = 'products';" 2>/dev/null | tr -d ' ')
 if [ -z "$FINAL_CURSOR" ]; then
     FINAL_CURSOR="0"
 fi

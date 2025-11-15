@@ -52,13 +52,15 @@ describe('Postgres Sync Status Methods', () => {
 
       await postgresClient.updateSyncCursor(resource, cursor)
 
-      const result = await pool.query('SELECT * FROM stripe._sync_status WHERE resource = $1', [
-        resource,
-      ])
+      const result = await pool.query(
+        `SELECT *, EXTRACT(EPOCH FROM last_incremental_cursor)::integer as cursor_epoch
+         FROM stripe._sync_status WHERE resource = $1`,
+        [resource]
+      )
 
       expect(result.rows).toHaveLength(1)
       expect(result.rows[0].resource).toBe(resource)
-      expect(result.rows[0].last_incremental_cursor).toBe(cursor)
+      expect(result.rows[0].cursor_epoch).toBe(cursor)
       expect(result.rows[0].status).toBe('running')
     })
 
@@ -193,12 +195,13 @@ describe('Postgres Sync Status Methods', () => {
       await postgresClient.markSyncComplete(resource)
 
       const result = await pool.query(
-        'SELECT status, last_incremental_cursor FROM stripe._sync_status WHERE resource = $1',
+        `SELECT status, EXTRACT(EPOCH FROM last_incremental_cursor)::integer as cursor_epoch
+         FROM stripe._sync_status WHERE resource = $1`,
         [resource]
       )
 
       expect(result.rows[0].status).toBe('complete')
-      expect(result.rows[0].last_incremental_cursor).toBe(cursor)
+      expect(result.rows[0].cursor_epoch).toBe(cursor)
     })
 
     it('should follow error workflow: running → error → running → complete', async () => {
@@ -217,12 +220,13 @@ describe('Postgres Sync Status Methods', () => {
       await postgresClient.markSyncComplete(resource)
 
       const result = await pool.query(
-        'SELECT status, last_incremental_cursor, error_message FROM stripe._sync_status WHERE resource = $1',
+        `SELECT status, EXTRACT(EPOCH FROM last_incremental_cursor)::integer as cursor_epoch, error_message
+         FROM stripe._sync_status WHERE resource = $1`,
         [resource]
       )
 
       expect(result.rows[0].status).toBe('complete')
-      expect(result.rows[0].last_incremental_cursor).toBe(finalCursor)
+      expect(result.rows[0].cursor_epoch).toBe(finalCursor)
       expect(result.rows[0].error_message).toBeNull()
     })
   })

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS "stripe"."_sync_status" (
   resource text UNIQUE NOT NULL,
   status text CHECK (status IN ('idle', 'running', 'complete', 'error')) DEFAULT 'idle',
   last_synced_at timestamptz DEFAULT now(),
-  last_incremental_cursor integer,
+  last_incremental_cursor timestamptz,
   error_message text,
   updated_at timestamptz DEFAULT now()
 );
