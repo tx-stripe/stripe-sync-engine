@@ -43,7 +43,7 @@ async function createStripeWebSocketSession(
     version: '1.19.0',
     publisher: 'stripe',
     os: process.platform,
-    uname: `${process.platform} ${process.arch}`
+    uname: `${process.platform} ${process.arch}`,
   })
 
   const params = new URLSearchParams({
@@ -54,12 +54,12 @@ async function createStripeWebSocketSession(
   const response = await fetch('https://api.stripe.com/v1/stripecli/sessions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/x-www-form-urlencoded',
       'User-Agent': 'Stripe/v1 stripe-cli/1.19.0',
       'X-Stripe-Client-User-Agent': clientUserAgent,
     },
-    body: params.toString()
+    body: params.toString(),
   })
 
   if (!response.ok) {
@@ -78,7 +78,7 @@ async function createStripeWebSocketSession(
     throw new Error(errorMessage)
   }
 
-  const session = await response.json() as {
+  const session = (await response.json()) as {
     WebSocketURL?: string
     WebSocketID?: string
     WebSocketAuthorizedFeature?: string
@@ -92,7 +92,8 @@ async function createStripeWebSocketSession(
   // Handle both PascalCase and snake_case responses
   const websocketUrl = session.WebSocketURL || session.websocket_url
   const websocketId = session.WebSocketID || session.websocket_id
-  const websocketAuthorizedFeature = session.WebSocketAuthorizedFeature || session.websocket_authorized_feature
+  const websocketAuthorizedFeature =
+    session.WebSocketAuthorizedFeature || session.websocket_authorized_feature
   const reconnectDelay = session.ReconnectDelay || session.reconnect_delay || 5
 
   if (!websocketUrl || !websocketId || !websocketAuthorizedFeature) {
@@ -101,14 +102,14 @@ async function createStripeWebSocketSession(
 
   logger?.info('Stripe WebSocket session created', {
     websocketId,
-    feature: websocketAuthorizedFeature
+    feature: websocketAuthorizedFeature,
   })
 
   return {
     websocketUrl,
     websocketId,
     websocketAuthorizedFeature,
-    reconnectDelay
+    reconnectDelay,
   }
 }
 
@@ -141,7 +142,7 @@ export async function createStripeWebSocketClient(
         headers: {
           'Websocket-Id': session.websocketId,
           'User-Agent': 'Stripe/v1 stripe-cli/1.19.0',
-        }
+        },
       })
 
       ws.on('open', () => {
@@ -192,7 +193,6 @@ export async function createStripeWebSocketClient(
           }, delay)
         }
       })
-
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
       logger?.error('Failed to connect to Stripe WebSocket', err)
@@ -230,6 +230,6 @@ export async function createStripeWebSocketClient(
       }
 
       logger?.info('WebSocket client closed')
-    }
+    },
   }
 }

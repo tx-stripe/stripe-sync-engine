@@ -149,7 +149,10 @@ export class StripeSync {
     this.websocketClient = await createStripeWebSocketClient({
       stripeApiKey: this.config.stripeSecretKey,
       onEvent: async (event) => {
-        this.config.logger?.info({ eventId: event.id, type: event.type }, `Received event: ${event.type}`)
+        this.config.logger?.info(
+          { eventId: event.id, type: event.type },
+          `Received event: ${event.type}`
+        )
 
         // Call user callback if provided
         if (options?.onEvent) {
@@ -2192,7 +2195,9 @@ export class StripeSync {
     return this.createManagedWebhook(baseUrl, params)
   }
 
-  private async getManagedWebhook(id: string): Promise<(Stripe.WebhookEndpoint & { uuid: string }) | null> {
+  private async getManagedWebhook(
+    id: string
+  ): Promise<(Stripe.WebhookEndpoint & { uuid: string }) | null> {
     const result = await this.postgresClient.query(
       `SELECT * FROM "${this.config.schema || DEFAULT_SCHEMA}"."_managed_webhooks" WHERE id = $1`,
       [id]

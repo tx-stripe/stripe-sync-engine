@@ -34,7 +34,7 @@ console.log(chalk.gray('Endpoint:'), 'POST https://api.stripe.com/v1/stripecli/s
 async function testStripeWebSocketSession() {
   const params = new URLSearchParams({
     device_name: 'stripe-sync-engine-poc-test',
-    'websocket_features[]': 'webhooks',  // Valid: webhooks, request_logs, or v2_events
+    'websocket_features[]': 'webhooks', // Valid: webhooks, request_logs, or v2_events
     forward_to_url: 'http://localhost:3000/stripe-webhooks',
   })
 
@@ -47,18 +47,18 @@ async function testStripeWebSocketSession() {
       version: '1.19.0',
       publisher: 'stripe',
       os: process.platform,
-      uname: `${process.platform} ${process.arch}`
+      uname: `${process.platform} ${process.arch}`,
     })
 
     const response = await fetch('https://api.stripe.com/v1/stripecli/sessions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${STRIPE_API_KEY}`,
+        Authorization: `Bearer ${STRIPE_API_KEY}`,
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': 'Stripe/v1 stripe-cli/1.19.0',
         'X-Stripe-Client-User-Agent': clientUserAgent,
       },
-      body: params.toString()
+      body: params.toString(),
     })
 
     console.log(chalk.cyan(`\nHTTP Status: ${response.status} ${response.statusText}\n`))
@@ -72,13 +72,27 @@ async function testStripeWebSocketSession() {
 
       console.log(chalk.green('✅ SUCCESS! WebSocket session created!\n'))
       console.log(chalk.cyan('Session Details:'))
-      console.log(chalk.gray('  WebSocket URL:'), session.WebSocketURL || session.websocket_url || 'N/A')
-      console.log(chalk.gray('  WebSocket ID:'), session.WebSocketID || session.websocket_id || 'N/A')
-      console.log(chalk.gray('  Feature:'), session.WebSocketAuthorizedFeature || session.websocket_authorized_feature || 'N/A')
-      console.log(chalk.gray('  Reconnect Delay:'), session.ReconnectDelay || session.reconnect_delay || 'N/A')
+      console.log(
+        chalk.gray('  WebSocket URL:'),
+        session.WebSocketURL || session.websocket_url || 'N/A'
+      )
+      console.log(
+        chalk.gray('  WebSocket ID:'),
+        session.WebSocketID || session.websocket_id || 'N/A'
+      )
+      console.log(
+        chalk.gray('  Feature:'),
+        session.WebSocketAuthorizedFeature || session.websocket_authorized_feature || 'N/A'
+      )
+      console.log(
+        chalk.gray('  Reconnect Delay:'),
+        session.ReconnectDelay || session.reconnect_delay || 'N/A'
+      )
 
       console.log(chalk.green('\n✅ Your API key has access to the stripecli/sessions endpoint!'))
-      console.log(chalk.green('✅ We can implement the WebSocket client without Stripe CLI dependency!\n'))
+      console.log(
+        chalk.green('✅ We can implement the WebSocket client without Stripe CLI dependency!\n')
+      )
 
       return true
     } else {
@@ -96,12 +110,24 @@ async function testStripeWebSocketSession() {
       console.log(JSON.stringify(errorData, null, 2))
 
       // Check for specific error patterns
-      if (responseText.includes('permission') || responseText.includes('authorized') || responseText.includes('stripecli_session_write')) {
-        console.log(chalk.red('\n❌ Permission Denied: API key lacks stripecli_session_write permission'))
-        console.log(chalk.yellow('📋 This is an internal-only permission that regular API keys do not have.'))
-        console.log(chalk.yellow('📋 Fallback: We need to use Stripe CLI (spawn process) instead.\n'))
+      if (
+        responseText.includes('permission') ||
+        responseText.includes('authorized') ||
+        responseText.includes('stripecli_session_write')
+      ) {
+        console.log(
+          chalk.red('\n❌ Permission Denied: API key lacks stripecli_session_write permission')
+        )
+        console.log(
+          chalk.yellow('📋 This is an internal-only permission that regular API keys do not have.')
+        )
+        console.log(
+          chalk.yellow('📋 Fallback: We need to use Stripe CLI (spawn process) instead.\n')
+        )
       } else if (responseText.includes('live')) {
-        console.log(chalk.red('\n❌ Live mode not supported: StripeCLI sessions only work with test keys'))
+        console.log(
+          chalk.red('\n❌ Live mode not supported: StripeCLI sessions only work with test keys')
+        )
       } else {
         console.log(chalk.yellow('\n⚠️  Unknown error - check response above'))
       }

@@ -1,7 +1,7 @@
 import chalk from 'chalk'
 import dotenv from 'dotenv'
 import { Client, type PoolConfig } from 'pg'
-import { loadConfig, CliOptions } from './config'
+import { CliOptions } from './config'
 import { StripeSync, runMigrations, type SyncObject } from 'stripe-replit-sync'
 
 const VALID_SYNC_OBJECTS: SyncObject[] = [
