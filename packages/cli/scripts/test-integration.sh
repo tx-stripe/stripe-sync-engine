@@ -28,9 +28,9 @@ else
 fi
 
 # Check required environment variables
-if [ -z "$DATABASE_URL" ] || [ -z "$STRIPE_API_KEY" ] || [ -z "$NGROK_AUTH_TOKEN" ]; then
+if [ -z "$DATABASE_URL" ] || [ -z "$STRIPE_API_KEY" ]; then
     echo "❌ Missing required environment variables"
-    echo "   Required: DATABASE_URL, STRIPE_API_KEY, NGROK_AUTH_TOKEN"
+    echo "   Required: DATABASE_URL, STRIPE_API_KEY"
     exit 1
 fi
 
@@ -82,11 +82,11 @@ echo "✓ CLI built successfully"
 echo ""
 
 # Step 2: Start CLI in background and test
-echo "🚀 Step 2: Starting CLI to test webhook creation..."
+echo "🚀 Step 2: Starting CLI with WebSocket listener..."
 echo ""
 
-# Start CLI in background with KEEP_WEBHOOKS_ON_SHUTDOWN=false for testing
-KEEP_WEBHOOKS_ON_SHUTDOWN=false npm run dev start > /tmp/cli-test.log 2>&1 &
+# Start CLI in background
+npm run dev start > /tmp/cli-test.log 2>&1 &
 CLI_PID=$!
 
 # Wait for startup (give it time to create webhook and run migrations)
@@ -96,40 +96,27 @@ sleep 15
 if ps -p $CLI_PID > /dev/null 2>&1; then
     echo "✓ CLI started successfully"
 
-    # Check the log for webhook creation
-    if grep -q "Webhook created:" /tmp/cli-test.log; then
-        echo "✓ Webhook creation detected in logs"
-        WEBHOOK_ID=$(grep "Webhook created:" /tmp/cli-test.log | awk '{print $NF}')
-        echo "   Webhook ID: $WEBHOOK_ID"
+    # Check the log for WebSocket connection
+    sleep 3  # Give it a moment to connect
+    if grep -q "Connected to Stripe" /tmp/cli-test.log; then
+        echo "✓ WebSocket connection detected in logs"
     fi
 
-    # Step 3: Verify webhook in database
+    # Step 3: Verify tables exist (no webhooks with WebSocket approach)
     echo ""
-    echo "🔍 Step 3: Checking database for managed webhook..."
-    WEBHOOK_COUNT=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe._managed_webhooks;" 2>/dev/null | tr -d ' ')
+    echo "🔍 Step 3: Verifying database schema..."
+    TABLE_COUNT=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'stripe';" 2>/dev/null | tr -d ' ')
 
-    # Default to 0 if empty
-    WEBHOOK_COUNT=${WEBHOOK_COUNT:-0}
-
-    if [ "$WEBHOOK_COUNT" -gt 0 ] 2>/dev/null; then
-        echo "✓ Found $WEBHOOK_COUNT webhook(s) in database"
-        echo ""
-        echo "Webhook details:"
-        docker exec stripe-sync-test-db psql -U postgres -d app_db -c "SELECT id, uuid, url, enabled, status FROM stripe._managed_webhooks;" 2>/dev/null
-
-        # Get webhook URL for testing
-        WEBHOOK_URL=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT url FROM stripe._managed_webhooks LIMIT 1;" 2>/dev/null | tr -d ' ')
-        echo ""
-        echo "   Webhook URL: $WEBHOOK_URL"
+    if [ "$TABLE_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "✓ Found $TABLE_COUNT tables in stripe schema"
     else
-        echo "⚠ No webhooks found in database (may still be initializing)"
-        echo "  Continuing with test..."
+        echo "⚠ No tables found - migrations may not have run"
     fi
 
-    # Step 4: Trigger test webhook events
+    # Step 4: Trigger test Stripe events
     echo ""
-    echo "🎯 Step 4: Triggering test Stripe webhook events..."
-    echo "   This tests end-to-end webhook processing and database writes"
+    echo "🎯 Step 4: Triggering test Stripe events..."
+    echo "   This tests end-to-end event processing and database writes"
     echo ""
 
     # Trigger customer.created event
@@ -202,20 +189,7 @@ if ps -p $CLI_PID > /dev/null 2>&1; then
     wait $CLI_PID 2>/dev/null || true
     sleep 1
 
-    # Step 7: Verify cleanup
-    echo ""
-    echo "🧹 Step 7: Verifying cleanup after shutdown..."
-    WEBHOOK_COUNT_AFTER=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe._managed_webhooks;" 2>/dev/null | tr -d ' ')
-
-    if [ "$WEBHOOK_COUNT_AFTER" -eq 0 ] 2>/dev/null || [ -z "$WEBHOOK_COUNT_AFTER" ]; then
-        echo "✓ Webhook successfully deleted from database"
-    else
-        echo "❌ Warning: $WEBHOOK_COUNT_AFTER webhook(s) still in database"
-        echo "   Cleanup may not have completed properly"
-        echo ""
-        echo "Remaining webhooks:"
-        docker exec stripe-sync-test-db psql -U postgres -d app_db -c "SELECT id, uuid FROM stripe._managed_webhooks;" 2>/dev/null
-    fi
+    echo "✓ CLI shutdown complete"
 else
     echo "❌ CLI failed to start"
     echo ""
@@ -232,12 +206,11 @@ echo "Summary:"
 echo "- ✓ Prerequisites checked (Stripe CLI)"
 echo "- ✓ PostgreSQL started in Docker"
 echo "- ✓ CLI built successfully"
-echo "- ✓ CLI started and created webhook in Stripe"
-echo "- ✓ Migrations run automatically via StripeSync"
-echo "- ✓ Webhook persisted to database with UUID-based URL"
-echo "- ✓ Test webhook events triggered (customer, product, price)"
-echo "- ✓ Webhook processing verified ($CUSTOMER_COUNT customers, $PRODUCT_COUNT products, $PRICE_COUNT prices)"
+echo "- ✓ CLI started with WebSocket listener"
+echo "- ✓ Migrations run automatically"
+echo "- ✓ WebSocket connection established to Stripe"
+echo "- ✓ Test events triggered (customer, product, price)"
+echo "- ✓ Event processing verified ($CUSTOMER_COUNT customers, $PRODUCT_COUNT products, $PRICE_COUNT prices)"
 echo "- ✓ Graceful shutdown completed"
-echo "- ✓ Webhook cleanup verified (removed from Stripe + DB)"
 echo ""
 echo "View full CLI log: /tmp/cli-test.log"
