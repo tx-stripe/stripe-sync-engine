@@ -167,6 +167,9 @@ describe('POST /webhooks', () => {
     const dbTimestamp = dbEntity.last_synced_at.toISOString()
     const timeDiff = Math.abs(new Date(dbTimestamp).getTime() - new Date(syncTimestamp).getTime())
     expect(timeDiff).toBeLessThan(1000) // Less than 1 second difference
+
+    // Verify _account_id is set correctly
+    expect(dbEntity._account_id).toBe('acct_test123')
   })
 
   test.each([
@@ -240,6 +243,8 @@ describe('POST /webhooks', () => {
     const newerDbEntity = newerResult.rows[0]
     const newerSyncTimestamp = new Date(newerTimestamp * 1000).toISOString()
     expect(newerDbEntity.last_synced_at.toISOString()).toBe(newerSyncTimestamp)
+    // Verify _account_id is set correctly
+    expect(newerDbEntity._account_id).toBe('acct_test123')
 
     // Now send a webhook with an older timestamp and different paid value (should not override)
     const olderTimestamp = newerTimestamp - 60 // 1 minute older
@@ -283,5 +288,7 @@ describe('POST /webhooks', () => {
     // Verify the paid field still reflects the newer webhook's value
     expect(olderDbEntity.paid).toBe(newerEventBody.data.object.paid)
     expect(olderDbEntity.paid).not.toBe(olderEventBody.data.object.paid)
+    // Verify _account_id is set correctly for both newer and older webhooks
+    expect(olderDbEntity._account_id).toBe('acct_test123')
   })
 })
