@@ -236,7 +236,7 @@ export class StripeSync {
           `Received webhook ${event.id}: ${event.type} for customer ${customer.id}`
         )
 
-        await this.upsertCustomers([customer], this.getSyncTimestamp(event, refetched))
+        await this.upsertCustomers([customer], accountId, this.getSyncTimestamp(event, refetched))
         break
       }
       case 'customer.subscription.created':
