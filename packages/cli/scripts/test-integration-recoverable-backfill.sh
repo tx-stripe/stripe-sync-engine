@@ -133,8 +133,8 @@ npm run dev backfill product > /tmp/sync-output.log 2>&1 &
 SYNC_PID=$!
 
 echo "   Sync PID: $SYNC_PID"
-echo "   Waiting 0.05 seconds then killing process..."
-sleep 0.05
+echo "   Waiting 0.001 seconds then killing process..."
+sleep 0.001
 
 # Kill the sync process to simulate a crash
 kill -9 $SYNC_PID 2>/dev/null || true
