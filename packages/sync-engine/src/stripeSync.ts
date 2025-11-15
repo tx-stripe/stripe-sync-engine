@@ -14,7 +14,6 @@ import { managedWebhookSchema } from './schemas/managed_webhook'
 import { randomUUID } from 'node:crypto'
 import { type PoolConfig } from 'pg'
 import { withRetry } from './utils/retry'
-import { createStripeWebSocketClient, type StripeWebSocketClient } from './websocket-client'
 
 function getUniqueIds<T>(entries: T[], key: string): string[] {
   const set = new Set(
@@ -50,7 +49,6 @@ export class StripeSync {
   stripe: Stripe
   postgresClient: PostgresClient
   private cachedAccountId: string | null = null
-  private websocketClient: StripeWebSocketClient | null = null
 
   constructor(private config: StripeSyncConfig) {
     this.stripe = new Stripe(config.stripeSecretKey, {
@@ -123,67 +121,6 @@ export class StripeSync {
         'Failed to retrieve Stripe account ID. Please provide stripeAccountId in config or ensure API key is valid.'
       )
     }
-  }
-
-  /**
-   * Start listening for Stripe events via WebSocket.
-   * This creates a WebSocket connection to Stripe's internal API and forwards events
-   * to the processEvent method for syncing to the database.
-   *
-   * WARNING: This uses an internal Stripe API that mimics the Stripe CLI.
-   * It is not officially supported and may break if Stripe changes their internal API.
-   *
-   * @param options - Optional callbacks for lifecycle events
-   * @returns Promise that resolves when the WebSocket connection is established
-   */
-  async startListening(options?: {
-    onReady?: () => void
-    onEvent?: (event: Stripe.Event) => void | Promise<void>
-  }): Promise<void> {
-    if (this.websocketClient) {
-      throw new Error('Already listening. Call stopListening() first.')
-    }
-
-    this.config.logger?.info('Starting WebSocket listener for Stripe events')
-
-    this.websocketClient = await createStripeWebSocketClient({
-      stripeApiKey: this.config.stripeSecretKey,
-      onEvent: async (event) => {
-        this.config.logger?.info(
-          { eventId: event.id, type: event.type },
-          `Received event: ${event.type}`
-        )
-
-        // Call user callback if provided
-        if (options?.onEvent) {
-          await options.onEvent(event)
-        }
-
-        // Process the event through the sync engine
-        await this.processEvent(event)
-      },
-      onReady: () => {
-        this.config.logger?.info('WebSocket connection established - listening for events')
-        options?.onReady?.()
-      },
-      onError: (error) => {
-        this.config.logger?.error(error, 'WebSocket error')
-      },
-      logger: this.config.logger,
-    })
-  }
-
-  /**
-   * Stop listening for Stripe events and close the WebSocket connection.
-   */
-  async stopListening(): Promise<void> {
-    if (!this.websocketClient) {
-      return
-    }
-
-    this.config.logger?.info('Stopping WebSocket listener')
-    await this.websocketClient.close()
-    this.websocketClient = null
   }
 
   async processWebhook(payload: Buffer | string, signature: string | undefined, uuid?: string) {

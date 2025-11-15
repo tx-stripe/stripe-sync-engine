@@ -2,7 +2,13 @@ import chalk from 'chalk'
 import dotenv from 'dotenv'
 import { Client, type PoolConfig } from 'pg'
 import { CliOptions } from './config'
-import { StripeSync, runMigrations, type SyncObject } from 'stripe-replit-sync'
+import {
+  StripeSync,
+  runMigrations,
+  createStripeWebSocketClient,
+  type SyncObject,
+  type StripeWebSocketClient,
+} from 'stripe-replit-sync'
 
 const VALID_SYNC_OBJECTS: SyncObject[] = [
   'all',
@@ -228,15 +234,16 @@ export async function migrateCommand(options: CliOptions): Promise<void> {
  */
 export async function syncCommand(options: CliOptions): Promise<void> {
   let stripeSync: StripeSync | null = null
+  let websocketClient: StripeWebSocketClient | null = null
 
   // Setup cleanup handler
   const cleanup = async (signal?: string) => {
     console.log(chalk.blue(`\n\nCleaning up... (signal: ${signal || 'manual'})`))
 
-    // Stop WebSocket listener
-    if (stripeSync) {
+    // Close WebSocket client
+    if (websocketClient) {
       try {
-        await stripeSync.stopListening()
+        await websocketClient.close()
         console.log(chalk.green('✓ Stopped listening for events'))
       } catch {
         console.log(chalk.yellow('⚠ Could not stop listener'))
@@ -363,9 +370,17 @@ export async function syncCommand(options: CliOptions): Promise<void> {
 
     // 3. Start WebSocket listener
     console.log(chalk.blue('\nStarting Stripe event listener...'))
-    await stripeSync.startListening({
+    websocketClient = await createStripeWebSocketClient({
+      stripeApiKey,
+      onEvent: async (event) => {
+        // Process the event through the sync engine
+        await stripeSync.processEvent(event)
+      },
       onReady: () => {
         console.log(chalk.green('✓ Connected to Stripe - listening for events'))
+      },
+      onError: (error) => {
+        console.error(chalk.red('WebSocket error:'), error.message)
       },
     })
 
