@@ -23,8 +23,8 @@ export class PostgresClient {
     return rows.length > 0
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async query(text: string, params?: any[]): Promise<QueryResult> {
-    // eslint-disable-line @typescript-eslint/no-explicit-any
     return this.pool.query(text, params)
   }
 
@@ -253,8 +253,8 @@ export class PostgresClient {
     )
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getAllAccounts(): Promise<any[]> {
-    // eslint-disable-line @typescript-eslint/no-explicit-any
     const result = await this.query(
       `SELECT raw_data FROM "${this.config.schema}"."accounts"
        ORDER BY last_synced_at DESC`
