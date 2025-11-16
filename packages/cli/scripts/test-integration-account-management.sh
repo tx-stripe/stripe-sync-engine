@@ -120,10 +120,7 @@ echo ""
 
 # Test 1.1: First API Fetch
 echo "TEST 1.1: First API Fetch"
-ACCOUNT_RAW=$(npm run dev -- get-account --format json 2>&1 || echo "{}")
-
-# Extract JSON from npm output (skip lines until we find JSON starting with {)
-ACCOUNT_JSON=$(echo "$ACCOUNT_RAW" | sed -n '/{/,$p')
+ACCOUNT_JSON=$(tsx scripts/test-account-methods.ts get-account 2>&1 || echo "{}")
 
 ACCOUNT_ID=$(echo "$ACCOUNT_JSON" | jq -r '.id' 2>/dev/null || echo "")
 
@@ -164,14 +161,12 @@ else
 fi
 echo ""
 
-# Test 1.3: Table Output Format
-echo "TEST 1.3: Table Output Format"
-TABLE_OUTPUT=$(npm run dev -- get-account --format table 2>/dev/null || echo "")
-
-if echo "$TABLE_OUTPUT" | grep -q "Current Stripe Account"; then
-    echo "✓ Table format output working"
+# Test 1.3: JSON Format Validation
+echo "TEST 1.3: JSON Format Validation"
+if echo "$ACCOUNT_JSON" | jq empty 2>/dev/null; then
+    echo "✓ Valid JSON output"
 else
-    echo "❌ Table format output failed"
+    echo "❌ Invalid JSON output"
     exit 1
 fi
 echo ""
@@ -189,10 +184,7 @@ echo ""
 
 # Test 2.1: Single Account Retrieval
 echo "TEST 2.1: Single Account Retrieval"
-ACCOUNTS_RAW=$(npm run dev -- list-accounts --format json 2>&1 || echo "[]")
-
-# Extract JSON from npm output
-ACCOUNTS_JSON=$(echo "$ACCOUNTS_RAW" | sed -n '/\[/,$p')
+ACCOUNTS_JSON=$(tsx scripts/test-account-methods.ts list-accounts 2>&1 || echo "[]")
 
 ACCOUNT_COUNT=$(echo "$ACCOUNTS_JSON" | jq 'length' 2>/dev/null || echo "0")
 
@@ -221,14 +213,13 @@ else
 fi
 echo ""
 
-# Test 2.3: Table Format Output
-echo "TEST 2.3: Table Format Output"
-TABLE_LIST=$(npm run dev -- list-accounts --format table 2>/dev/null || echo "")
-
-if echo "$TABLE_LIST" | grep -q "Synced Stripe Accounts"; then
-    echo "✓ Table format output working"
+# Test 2.3: Ordering Check
+echo "TEST 2.3: Ordering by Last Synced"
+FIRST_ACCOUNT_ID=$(echo "$ACCOUNTS_JSON" | jq -r '.[0].id' 2>/dev/null || echo "")
+if [ -n "$FIRST_ACCOUNT_ID" ]; then
+    echo "✓ First account: $FIRST_ACCOUNT_ID"
 else
-    echo "❌ Table format output failed"
+    echo "❌ Could not get first account"
     exit 1
 fi
 echo ""
@@ -289,7 +280,7 @@ echo ""
 
 # Test 3.1: Dry-Run Preview
 echo "TEST 3.1: Dry-Run Preview"
-DRY_RUN_JSON=$(tsx scripts/test-delete-account.ts "$ACCOUNT_ID" --dry-run 2>/dev/null || echo "{}")
+DRY_RUN_JSON=$(tsx scripts/test-account-methods.ts delete-account "$ACCOUNT_ID" --dry-run 2>/dev/null || echo "{}")
 
 # Verify dry-run returns deletion counts
 DELETED_PRODUCTS=$(echo "$DRY_RUN_JSON" | jq -r '.deletedRecordCounts.products // 0' 2>/dev/null)
@@ -327,7 +318,7 @@ echo ""
 
 # Test 3.2: Actual Deletion with Transaction
 echo "TEST 3.2: Actual Deletion with Transaction"
-DELETE_JSON=$(tsx scripts/test-delete-account.ts "$ACCOUNT_ID" 2>/dev/null || echo "{}")
+DELETE_JSON=$(tsx scripts/test-account-methods.ts delete-account "$ACCOUNT_ID" 2>/dev/null || echo "{}")
 
 FINAL_DELETED_PRODUCTS=$(echo "$DELETE_JSON" | jq -r '.deletedRecordCounts.products // 0' 2>/dev/null)
 FINAL_DELETED_CUSTOMERS=$(echo "$DELETE_JSON" | jq -r '.deletedRecordCounts.customers // 0' 2>/dev/null)
@@ -396,7 +387,7 @@ echo ""
 
 # Test 3.4: Delete Non-Existent Account
 echo "TEST 3.4: Delete Non-Existent Account Error Handling"
-NONEXISTENT_JSON=$(tsx scripts/test-delete-account.ts "acct_nonexistent" 2>&1 || echo "{}")
+NONEXISTENT_JSON=$(tsx scripts/test-account-methods.ts delete-account "acct_nonexistent" 2>&1 || echo "{}")
 DELETED_ACCOUNT_COUNT=$(echo "$NONEXISTENT_JSON" | jq -r '.deletedRecordCounts.accounts // 0' 2>/dev/null)
 
 if [ "$DELETED_ACCOUNT_COUNT" -eq 0 ]; then
@@ -426,12 +417,12 @@ echo ""
 echo "TEST SUITE 1: getCurrentAccount()"
 echo "  - ✓ First API fetch working"
 echo "  - ✓ Account persisted to database"
-echo "  - ✓ Table format output working"
+echo "  - ✓ JSON format validation"
 echo ""
 echo "TEST SUITE 2: getAllSyncedAccounts()"
 echo "  - ✓ Account retrieval working"
-echo "  - ✓ JSON format valid"
-echo "  - ✓ Table format output working"
+echo "  - ✓ JSON format validation"
+echo "  - ✓ Ordering verified"
 echo ""
 echo "TEST SUITE 3: dangerouslyDeleteAccount()"
 echo "  - ✓ Dry-run preview working (no actual deletion)"

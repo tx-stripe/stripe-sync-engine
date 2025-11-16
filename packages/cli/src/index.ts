@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander'
-import { syncCommand, migrateCommand, backfillCommand, getAccountCommand, listAccountsCommand } from './command'
+import { syncCommand, migrateCommand, backfillCommand } from './command'
 
 const program = new Command()
 
@@ -49,38 +49,6 @@ program
         databaseUrl: options.databaseUrl,
       },
       entityName
-    )
-  })
-
-// Get current account command
-program
-  .command('get-account')
-  .description('Get the current Stripe account (cached or fetched from API)')
-  .option('--stripe-key <key>', 'Stripe API key (or STRIPE_API_KEY env)')
-  .option('--database-url <url>', 'Postgres DATABASE_URL (or DATABASE_URL env)')
-  .option('--format <format>', 'Output format: json|table (default: table)', 'table')
-  .action(async (options) => {
-    await getAccountCommand(
-      {
-        stripeKey: options.stripeKey,
-        databaseUrl: options.databaseUrl,
-      },
-      options.format
-    )
-  })
-
-// List all synced accounts command
-program
-  .command('list-accounts')
-  .description('List all Stripe accounts synced to the database')
-  .option('--database-url <url>', 'Postgres DATABASE_URL (or DATABASE_URL env)')
-  .option('--format <format>', 'Output format: json|table (default: table)', 'table')
-  .action(async (options) => {
-    await listAccountsCommand(
-      {
-        databaseUrl: options.databaseUrl,
-      },
-      options.format
     )
   })
 
