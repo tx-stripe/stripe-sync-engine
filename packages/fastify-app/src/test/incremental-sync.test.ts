@@ -6,6 +6,7 @@ import { getConfig } from '../utils/config'
 import { logger } from '../logger'
 
 let stripeSync: StripeSync
+const testAccountId = 'acct_test_account'
 
 beforeAll(async () => {
   const config = getConfig()
@@ -20,7 +21,7 @@ beforeAll(async () => {
     poolConfig: {
       connectionString: config.databaseUrl,
     },
-    stripeAccountId: 'acct_test_account',
+    stripeAccountId: testAccountId,
   })
 })
 
@@ -265,13 +266,13 @@ describe('Incremental Sync', () => {
     await expect(stripeSync.syncProducts()).rejects.toThrow('Simulated sync error')
 
     // Cursor should be saved up to checkpoint
-    const cursor = await stripeSync.postgresClient.getSyncCursor('products')
+    const cursor = await stripeSync.postgresClient.getSyncCursor('products', testAccountId)
     expect(cursor).toBe(1704902400)
 
     // Status should be error
     const status = await stripeSync.postgresClient.pool.query(
-      'SELECT status, error_message FROM stripe._sync_status WHERE resource = $1',
-      ['products']
+      'SELECT status, error_message FROM stripe._sync_status WHERE resource = $1 AND "_account_id" = $2',
+      ['products', testAccountId]
     )
     expect(status.rows[0].status).toBe('error')
     expect(status.rows[0].error_message).toContain('Simulated sync error')
@@ -282,8 +283,8 @@ describe('Incremental Sync', () => {
 
     // Status should be complete
     const finalStatus = await stripeSync.postgresClient.pool.query(
-      'SELECT status FROM stripe._sync_status WHERE resource = $1',
-      ['products']
+      'SELECT status FROM stripe._sync_status WHERE resource = $1 AND "_account_id" = $2',
+      ['products', testAccountId]
     )
     expect(finalStatus.rows[0].status).toBe('complete')
   })

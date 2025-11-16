@@ -885,7 +885,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('products')
+      const cursor = await this.postgresClient.getSyncCursor('products', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -908,7 +908,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('prices')
+      const cursor = await this.postgresClient.getSyncCursor('prices', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -931,7 +931,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('plans')
+      const cursor = await this.postgresClient.getSyncCursor('plans', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -954,7 +954,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('customers')
+      const cursor = await this.postgresClient.getSyncCursor('customers', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -978,7 +978,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('subscriptions')
+      const cursor = await this.postgresClient.getSyncCursor('subscriptions', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1001,7 +1001,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('subscription_schedules')
+      const cursor = await this.postgresClient.getSyncCursor('subscription_schedules', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1025,7 +1025,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('invoices')
+      const cursor = await this.postgresClient.getSyncCursor('invoices', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1048,7 +1048,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('charges')
+      const cursor = await this.postgresClient.getSyncCursor('charges', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1071,7 +1071,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('setup_intents')
+      const cursor = await this.postgresClient.getSyncCursor('setup_intents', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1094,7 +1094,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('payment_intents')
+      const cursor = await this.postgresClient.getSyncCursor('payment_intents', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1174,7 +1174,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('disputes')
+      const cursor = await this.postgresClient.getSyncCursor('disputes', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1197,7 +1197,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('early_fraud_warnings')
+      const cursor = await this.postgresClient.getSyncCursor('early_fraud_warnings', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1221,7 +1221,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('refunds')
+      const cursor = await this.postgresClient.getSyncCursor('refunds', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1244,7 +1244,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('credit_notes')
+      const cursor = await this.postgresClient.getSyncCursor('credit_notes', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1295,7 +1295,7 @@ export class StripeSync {
     if (syncParams?.created) {
       params.created = syncParams.created
     } else {
-      const cursor = await this.postgresClient.getSyncCursor('checkout_sessions')
+      const cursor = await this.postgresClient.getSyncCursor('checkout_sessions', accountId)
       if (cursor) {
         params.created = { gte: cursor }
         this.config.logger?.info(`Incremental sync from cursor: ${cursor}`)
@@ -1321,7 +1321,7 @@ export class StripeSync {
     let currentBatch: T[] = []
 
     if (resourceName) {
-      await this.postgresClient.markSyncRunning(resourceName)
+      await this.postgresClient.markSyncRunning(resourceName, accountId)
     }
 
     try {
@@ -1346,7 +1346,7 @@ export class StripeSync {
                     ...currentBatch.map((i) => (i as { created?: number }).created || 0)
                   )
                   if (maxCreated > 0) {
-                    await this.postgresClient.updateSyncCursor(resourceName, maxCreated)
+                    await this.postgresClient.updateSyncCursor(resourceName, accountId, maxCreated)
                     this.config.logger?.info(`Checkpoint: cursor updated to ${maxCreated}`)
                   }
                 }
@@ -1366,7 +1366,7 @@ export class StripeSync {
                   ...currentBatch.map((i) => (i as { created?: number }).created || 0)
                 )
                 if (maxCreated > 0) {
-                  await this.postgresClient.updateSyncCursor(resourceName, maxCreated)
+                  await this.postgresClient.updateSyncCursor(resourceName, accountId, maxCreated)
                 }
               }
             }
@@ -1384,7 +1384,7 @@ export class StripeSync {
                   ...currentBatch.map((i) => (i as { created?: number }).created || 0)
                 )
                 if (maxCreated > 0) {
-                  await this.postgresClient.updateSyncCursor(resourceName, maxCreated)
+                  await this.postgresClient.updateSyncCursor(resourceName, accountId, maxCreated)
                 }
               }
             }
@@ -1396,7 +1396,7 @@ export class StripeSync {
       )
 
       if (resourceName) {
-        await this.postgresClient.markSyncComplete(resourceName)
+        await this.postgresClient.markSyncComplete(resourceName, accountId)
       }
 
       this.config.logger?.info(`Sync complete: ${totalSynced} items synced`)
@@ -1405,6 +1405,7 @@ export class StripeSync {
       if (resourceName) {
         await this.postgresClient.markSyncError(
           resourceName,
+          accountId,
           error instanceof Error ? error.message : 'Unknown error'
         )
       }
