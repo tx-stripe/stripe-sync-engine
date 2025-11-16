@@ -110,13 +110,12 @@ jobs:
           touch .env
           echo DATABASE_URL='postgresql://postgres:postgres@localhost:5432/app_db' >> .env
           echo STRIPE_API_KEY='${{ secrets.STRIPE_TEST_KEY }}' >> .env
-          echo NGROK_AUTH_TOKEN='${{ secrets.NGROK_AUTH_TOKEN }}' >> .env
 
-      - name: Run CLI Webhook Integration Test
+      - name: Run CLI Integration Test
         run: |
           cd packages/cli
-          chmod +x ./scripts/test-integration-webhooks.sh
-          ./scripts/test-integration-webhooks.sh
+          chmod +x ./scripts/test-integration.sh
+          ./scripts/test-integration.sh
 
       - name: Run CLI Backfill Integration Test
         run: |
