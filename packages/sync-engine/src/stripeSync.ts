@@ -141,6 +141,125 @@ export class StripeSync {
     }
   }
 
+  /**
+   * Get the current account being synced
+   */
+  async getCurrentAccount(): Promise<Stripe.Account | null> {
+    if (this.cachedAccount) {
+      return this.cachedAccount
+    }
+
+    // Populate cache by calling getAccountId
+    await this.getAccountId()
+
+    return this.cachedAccount
+  }
+
+  /**
+   * Get all accounts that have been synced to the database
+   */
+  async getAllSyncedAccounts(): Promise<Stripe.Account[]> {
+    try {
+      const accountsData = await this.postgresClient.getAllAccounts()
+      return accountsData as Stripe.Account[]
+    } catch (error) {
+      this.config.logger?.error(error, 'Failed to retrieve accounts from database')
+      throw new Error('Failed to retrieve synced accounts from database')
+    }
+  }
+
+  /**
+   * DANGEROUS: Delete an account and all associated data from the database
+   * This operation cannot be undone!
+   *
+   * @param accountId - The Stripe account ID to delete
+   * @param options - Options for deletion behavior
+   * @param options.dryRun - If true, only count records without deleting (default: false)
+   * @param options.useTransaction - If true, use transaction for atomic deletion (default: true)
+   * @returns Deletion summary with counts and warnings
+   */
+  async dangerouslyDeleteAccount(
+    accountId: string,
+    options?: {
+      dryRun?: boolean
+      useTransaction?: boolean
+    }
+  ): Promise<{
+    deletedAccountId: string
+    deletedRecordCounts: { [tableName: string]: number }
+    warnings: string[]
+  }> {
+    const dryRun = options?.dryRun ?? false
+    const useTransaction = options?.useTransaction ?? true
+
+    this.config.logger?.info(
+      `${dryRun ? 'Preview' : 'Deleting'} account ${accountId} (transaction: ${useTransaction})`
+    )
+
+    try {
+      // Get record counts
+      const counts = await this.postgresClient.getAccountRecordCounts(accountId)
+
+      // Generate warnings
+      const warnings: string[] = []
+      let totalRecords = 0
+
+      for (const [table, count] of Object.entries(counts)) {
+        if (count > 0) {
+          totalRecords += count
+          warnings.push(`Will delete ${count} ${table} record${count !== 1 ? 's' : ''}`)
+        }
+      }
+
+      if (totalRecords > 100000) {
+        warnings.push(
+          `Large dataset detected (${totalRecords} total records). Consider using useTransaction: false for better performance.`
+        )
+      }
+
+      // If deleting current account, warn about cache invalidation
+      if (this.cachedAccountId === accountId) {
+        warnings.push(
+          'Warning: Deleting the current account. Cache will be cleared after deletion.'
+        )
+      }
+
+      // Dry-run mode: just return counts
+      if (dryRun) {
+        this.config.logger?.info(`Dry-run complete: ${totalRecords} total records would be deleted`)
+        return {
+          deletedAccountId: accountId,
+          deletedRecordCounts: counts,
+          warnings,
+        }
+      }
+
+      // Actual deletion
+      const deletionCounts = await this.postgresClient.deleteAccountWithCascade(
+        accountId,
+        useTransaction
+      )
+
+      // Clear cache if we deleted the current account
+      if (this.cachedAccountId === accountId) {
+        this.cachedAccountId = null
+        this.cachedAccount = null
+      }
+
+      this.config.logger?.info(`Successfully deleted account ${accountId} with ${totalRecords} total records`)
+
+      return {
+        deletedAccountId: accountId,
+        deletedRecordCounts: deletionCounts,
+        warnings,
+      }
+    } catch (error) {
+      this.config.logger?.error(error, `Failed to delete account ${accountId}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      throw new Error(`Failed to delete account ${accountId}: ${errorMessage}`)
+    }
+  }
+
   async processWebhook(payload: Buffer | string, signature: string | undefined, uuid?: string) {
     let webhookSecret: string
 

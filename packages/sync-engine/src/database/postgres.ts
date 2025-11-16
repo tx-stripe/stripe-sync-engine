@@ -251,4 +251,124 @@ export class PostgresClient {
       [accountData.id, rawData]
     )
   }
+
+  async getAllAccounts(): Promise<any[]> { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const result = await this.query(
+      `SELECT raw_data FROM "${this.config.schema}"."accounts"
+       ORDER BY last_synced_at DESC`
+    )
+    return result.rows.map((row) => row.raw_data)
+  }
+
+  async getAccountRecordCounts(accountId: string): Promise<{ [tableName: string]: number }> {
+    const tables = [
+      'subscription_items',
+      'subscriptions',
+      'subscription_schedules',
+      'checkout_session_line_items',
+      'checkout_sessions',
+      'tax_ids',
+      'customers',
+      'charges',
+      'refunds',
+      'credit_notes',
+      'disputes',
+      'early_fraud_warnings',
+      'invoices',
+      'payment_intents',
+      'payment_methods',
+      'setup_intents',
+      'prices',
+      'plans',
+      'products',
+      'features',
+      'active_entitlements',
+      'reviews',
+      '_managed_webhooks',
+      '_sync_status',
+    ]
+
+    const counts: { [tableName: string]: number } = {}
+
+    for (const table of tables) {
+      const result = await this.query(
+        `SELECT COUNT(*) as count FROM "${this.config.schema}"."${table}"
+         WHERE "_account_id" = $1`,
+        [accountId]
+      )
+      counts[table] = parseInt(result.rows[0].count)
+    }
+
+    return counts
+  }
+
+  async deleteAccountWithCascade(
+    accountId: string,
+    useTransaction: boolean
+  ): Promise<{ [tableName: string]: number }> {
+    // Deletion order: dependencies first, then accounts last
+    const deletionOrder = [
+      'subscription_items',
+      'subscriptions',
+      'subscription_schedules',
+      'checkout_session_line_items',
+      'checkout_sessions',
+      'tax_ids',
+      'charges',
+      'refunds',
+      'credit_notes',
+      'disputes',
+      'early_fraud_warnings',
+      'invoices',
+      'payment_intents',
+      'payment_methods',
+      'setup_intents',
+      'prices',
+      'plans',
+      'products',
+      'features',
+      'active_entitlements',
+      'reviews',
+      '_managed_webhooks',
+      'customers',
+      '_sync_status',
+    ]
+
+    const deletionCounts: { [tableName: string]: number } = {}
+
+    try {
+      if (useTransaction) {
+        await this.query('BEGIN')
+      }
+
+      // Delete from all dependent tables
+      for (const table of deletionOrder) {
+        const result = await this.query(
+          `DELETE FROM "${this.config.schema}"."${table}"
+           WHERE "_account_id" = $1`,
+          [accountId]
+        )
+        deletionCounts[table] = result.rowCount || 0
+      }
+
+      // Finally, delete the account itself
+      const accountResult = await this.query(
+        `DELETE FROM "${this.config.schema}"."accounts"
+         WHERE "id" = $1`,
+        [accountId]
+      )
+      deletionCounts['accounts'] = accountResult.rowCount || 0
+
+      if (useTransaction) {
+        await this.query('COMMIT')
+      }
+    } catch (error) {
+      if (useTransaction) {
+        await this.query('ROLLBACK')
+      }
+      throw error
+    }
+
+    return deletionCounts
+  }
 }
