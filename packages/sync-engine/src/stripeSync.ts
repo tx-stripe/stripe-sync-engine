@@ -2069,8 +2069,8 @@ export class StripeSync {
     )
   }
 
-  // Managed Webhook CRUD methods (private - internal use only)
-  private async createManagedWebhook(
+  // Managed Webhook CRUD methods
+  async createManagedWebhook(
     baseUrl: string,
     params: Omit<Stripe.WebhookEndpointCreateParams, 'url'>
   ): Promise<{ webhook: Stripe.WebhookEndpoint; uuid: string }> {
@@ -2092,7 +2092,7 @@ export class StripeSync {
     return { webhook, uuid }
   }
 
-  private async findOrCreateManagedWebhook(
+  async findOrCreateManagedWebhook(
     baseUrl: string,
     params: Omit<Stripe.WebhookEndpointCreateParams, 'url'>
   ): Promise<{ webhook: Stripe.WebhookEndpoint; uuid: string }> {
@@ -2132,9 +2132,7 @@ export class StripeSync {
     return this.createManagedWebhook(baseUrl, params)
   }
 
-  private async getManagedWebhook(
-    id: string
-  ): Promise<(Stripe.WebhookEndpoint & { uuid: string }) | null> {
+  async getManagedWebhook(id: string): Promise<(Stripe.WebhookEndpoint & { uuid: string }) | null> {
     const result = await this.postgresClient.query(
       `SELECT * FROM "${this.config.schema || DEFAULT_SCHEMA}"."_managed_webhooks" WHERE id = $1`,
       [id]
@@ -2144,14 +2142,14 @@ export class StripeSync {
       : null
   }
 
-  private async listManagedWebhooks(): Promise<Array<Stripe.WebhookEndpoint & { uuid: string }>> {
+  async listManagedWebhooks(): Promise<Array<Stripe.WebhookEndpoint & { uuid: string }>> {
     const result = await this.postgresClient.query(
       `SELECT * FROM "${this.config.schema || DEFAULT_SCHEMA}"."_managed_webhooks" ORDER BY created DESC`
     )
     return result.rows as Array<Stripe.WebhookEndpoint & { uuid: string }>
   }
 
-  private async updateManagedWebhook(
+  async updateManagedWebhook(
     id: string,
     params: Stripe.WebhookEndpointUpdateParams
   ): Promise<Stripe.WebhookEndpoint> {
@@ -2164,12 +2162,12 @@ export class StripeSync {
     return webhook
   }
 
-  private async deleteManagedWebhook(id: string): Promise<boolean> {
+  async deleteManagedWebhook(id: string): Promise<boolean> {
     await this.stripe.webhookEndpoints.del(id)
     return this.postgresClient.delete('_managed_webhooks', id)
   }
 
-  private async upsertManagedWebhooks(
+  async upsertManagedWebhooks(
     webhooks: Array<Stripe.WebhookEndpoint & { uuid: string }>,
     accountId: string,
     syncTimestamp?: string

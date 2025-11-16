@@ -4,11 +4,13 @@ import chalk from 'chalk'
 
 export interface Config {
   stripeApiKey: string
+  ngrokAuthToken: string
   databaseUrl: string
 }
 
 export interface CliOptions {
   stripeKey?: string
+  ngrokToken?: string
   databaseUrl?: string
 }
 
@@ -25,6 +27,9 @@ export async function loadConfig(options: CliOptions): Promise<Config> {
   // Get Stripe API key
   config.stripeApiKey =
     options.stripeKey || process.env.STRIPE_API_KEY || process.env.STRIPE_SECRET_KEY || ''
+
+  // Get ngrok auth token
+  config.ngrokAuthToken = options.ngrokToken || process.env.NGROK_AUTH_TOKEN || ''
 
   // Get database URL
   config.databaseUrl = options.databaseUrl || process.env.DATABASE_URL || ''
@@ -44,6 +49,21 @@ export async function loadConfig(options: CliOptions): Promise<Config> {
         }
         if (!input.startsWith('sk_')) {
           return 'Stripe API key should start with "sk_"'
+        }
+        return true
+      },
+    })
+  }
+
+  if (!config.ngrokAuthToken) {
+    questions.push({
+      type: 'password',
+      name: 'ngrokAuthToken',
+      message: 'Enter your ngrok auth token:',
+      mask: '*',
+      validate: (input: string) => {
+        if (!input || input.trim() === '') {
+          return 'ngrok auth token is required'
         }
         return true
       },
