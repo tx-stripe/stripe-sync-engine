@@ -23,7 +23,7 @@ export class PostgresClient {
     return rows.length > 0
   }
 
-  async query(text: string, params?: string[]): Promise<QueryResult> {
+  async query(text: string, params?: any[]): Promise<QueryResult> { // eslint-disable-line @typescript-eslint/no-explicit-any
     return this.pool.query(text, params)
   }
 
@@ -229,6 +229,26 @@ export class PostgresClient {
        SET status = 'error', error_message = $3, updated_at = now()
        WHERE resource = $1 AND "_account_id" = $2`,
       [resource, accountId, errorMessage]
+    )
+  }
+
+  // Account management methods
+
+  async upsertAccount(accountData: {
+    id: string
+    raw_data: any // eslint-disable-line @typescript-eslint/no-explicit-any
+  }): Promise<void> {
+    const rawData = JSON.stringify(accountData.raw_data)
+
+    await this.query(
+      `INSERT INTO "${this.config.schema}"."accounts" ("id", "raw_data", "first_synced_at", "last_synced_at")
+       VALUES ($1, $2::jsonb, now(), now())
+       ON CONFLICT ("id")
+       DO UPDATE SET
+         "raw_data" = EXCLUDED."raw_data",
+         "last_synced_at" = now(),
+         "updated_at" = now()`,
+      [accountData.id, rawData]
     )
   }
 }
