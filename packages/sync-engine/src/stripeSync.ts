@@ -2337,7 +2337,9 @@ export class StripeSync {
       const filtered: Record<string, unknown> = {}
       for (const prop of managedWebhookSchema.properties) {
         if (prop in webhook) {
-          filtered[prop] = webhook[prop as keyof typeof webhook]
+          // Map 'id' to '_id' for database storage
+          const dbProp = prop === 'id' ? '_id' : prop
+          filtered[dbProp] = webhook[prop as keyof typeof webhook]
         }
       }
       return filtered
