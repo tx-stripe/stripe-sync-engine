@@ -138,9 +138,9 @@ export class StripeSync {
   /**
    * Upsert Stripe account information to the database
    * @param account - Stripe account object
-   * @param apiKeyHash - Optional SHA-256 hash of API key to store for fast lookups
+   * @param apiKeyHash - SHA-256 hash of API key to store for fast lookups
    */
-  private async upsertAccount(account: Stripe.Account, apiKeyHash?: string): Promise<void> {
+  private async upsertAccount(account: Stripe.Account, apiKeyHash: string): Promise<void> {
     try {
       await this.postgresClient.upsertAccount(
         {

@@ -270,42 +270,28 @@ export class PostgresClient {
       id: string
       raw_data: any // eslint-disable-line @typescript-eslint/no-explicit-any
     },
-    apiKeyHash?: string
+    apiKeyHash: string
   ): Promise<void> {
     const rawData = JSON.stringify(accountData.raw_data)
 
-    if (apiKeyHash) {
-      // Upsert account and add API key hash to array if not already present
-      await this.query(
-        `INSERT INTO "${this.config.schema}"."accounts" ("id", "raw_data", "api_key_hashes", "first_synced_at", "last_synced_at")
-         VALUES ($1, $2::jsonb, ARRAY[$3], now(), now())
-         ON CONFLICT ("id")
-         DO UPDATE SET
-           "raw_data" = EXCLUDED."raw_data",
-           "api_key_hashes" = (
-             SELECT ARRAY(
-               SELECT DISTINCT unnest(
-                 COALESCE("${this.config.schema}"."accounts"."api_key_hashes", '{}') || ARRAY[$3]
-               )
+    // Upsert account and add API key hash to array if not already present
+    await this.query(
+      `INSERT INTO "${this.config.schema}"."accounts" ("id", "raw_data", "api_key_hashes", "first_synced_at", "last_synced_at")
+       VALUES ($1, $2::jsonb, ARRAY[$3], now(), now())
+       ON CONFLICT ("id")
+       DO UPDATE SET
+         "raw_data" = EXCLUDED."raw_data",
+         "api_key_hashes" = (
+           SELECT ARRAY(
+             SELECT DISTINCT unnest(
+               COALESCE("${this.config.schema}"."accounts"."api_key_hashes", '{}') || ARRAY[$3]
              )
-           ),
-           "last_synced_at" = now(),
-           "updated_at" = now()`,
-        [accountData.id, rawData, apiKeyHash]
-      )
-    } else {
-      // Original behavior when no API key hash is provided
-      await this.query(
-        `INSERT INTO "${this.config.schema}"."accounts" ("id", "raw_data", "first_synced_at", "last_synced_at")
-         VALUES ($1, $2::jsonb, now(), now())
-         ON CONFLICT ("id")
-         DO UPDATE SET
-           "raw_data" = EXCLUDED."raw_data",
-           "last_synced_at" = now(),
-           "updated_at" = now()`,
-        [accountData.id, rawData]
-      )
-    }
+           )
+         ),
+         "last_synced_at" = now(),
+         "updated_at" = now()`,
+      [accountData.id, rawData, apiKeyHash]
+    )
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
