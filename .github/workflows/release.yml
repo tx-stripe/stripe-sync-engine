@@ -4,6 +4,38 @@ on:
   workflow_dispatch:
 
 jobs:
+  release:
+    name: Release
+
+    runs-on: ubuntu-24.04
+
+    outputs:
+      new-release-published: ${{ steps.semantic-release.outputs.new_release_published }}
+      new-release-version: ${{ steps.semantic-release.outputs.new_release_version }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ./.nvmrc
+          cache: pnpm
+
+      - run: |
+          pnpm install --frozen-lockfile
+
+      - name: Run semantic-release
+        id: semantic-release
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          semantic_version: 19
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   npm:
     name: Release on NPM
     permissions:
