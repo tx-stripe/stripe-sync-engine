@@ -2,7 +2,7 @@ import chalk from 'chalk'
 import express from 'express'
 import http from 'node:http'
 import dotenv from 'dotenv'
-import { Client, type PoolConfig } from 'pg'
+import { type PoolConfig } from 'pg'
 import { loadConfig, CliOptions } from './config'
 import {
   StripeSync,
@@ -199,8 +199,8 @@ export async function migrateCommand(options: CliOptions): Promise<void> {
       console.warn(
         'Migration error:',
         migrationError instanceof Error ? migrationError.message : String(migrationError)
-      );
-      throw migrationError;
+      )
+      throw migrationError
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -302,7 +302,7 @@ export async function syncCommand(options: CliOptions): Promise<void> {
         'Migration error:',
         migrationError instanceof Error ? migrationError.message : String(migrationError)
       )
-      throw migrationError;
+      throw migrationError
     }
 
     // 2. Create StripeSync instance
