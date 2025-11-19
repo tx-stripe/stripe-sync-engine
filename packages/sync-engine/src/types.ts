@@ -1,4 +1,5 @@
 import { type PoolConfig } from 'pg'
+import pino from 'pino'
 import Stripe from 'stripe'
 
 export type RevalidateEntity =
@@ -64,7 +65,7 @@ export type StripeSyncConfig = {
 
   poolConfig: PoolConfig
 
-  logger?: Console
+  logger?: pino.Logger
 
   /**
    * Maximum number of retry attempts for 429 rate limit errors.

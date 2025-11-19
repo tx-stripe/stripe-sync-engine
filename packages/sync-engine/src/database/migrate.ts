@@ -1,6 +1,7 @@
 import { Client } from 'pg'
 import { migrate } from 'pg-node-migrations'
 import fs from 'node:fs'
+import pino from 'pino'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ConnectionOptions } from 'node:tls'
@@ -13,7 +14,7 @@ type MigrationConfig = {
   schema: string
   databaseUrl: string
   ssl?: ConnectionOptions
-  logger?: Console
+  logger?: pino.Logger
 }
 
 async function doesTableExist(client: Client, schema: string, tableName: string): Promise<boolean> {
@@ -32,8 +33,9 @@ async function doesTableExist(client: Client, schema: string, tableName: string)
 async function renameMigrationsTableIfNeeded(
   client: Client,
   schema = 'stripe',
-  logger?: Console
+  logger?: pino.Logger
 ): Promise<void> {
+  logger = logger ?? pino()
   const oldTableExists = await doesTableExist(client, schema, 'migrations')
   const newTableExists = await doesTableExist(client, schema, '_migrations')
 
