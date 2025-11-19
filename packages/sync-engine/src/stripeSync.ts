@@ -61,8 +61,8 @@ export class StripeSync {
         name: 'Stripe Postgres Sync',
       },
     })
-    this.config.schema = config.schema ?? DEFAULT_SCHEMA;
-    this.config.logger = config.logger ?? pino();
+    this.config.schema = config.schema ?? DEFAULT_SCHEMA
+    this.config.logger = config.logger ?? pino()
     this.config.logger?.info(
       { autoExpandLists: config.autoExpandLists, stripeApiVersion: config.stripeApiVersion },
       'StripeSync initialized'
@@ -921,7 +921,7 @@ export class StripeSync {
   }
 
   async syncBackfill(params?: SyncBackfillParams): Promise<SyncBackfill> {
-    const { object } = params ?? { object: 'all' };
+    const { object } = params ?? { object: 'all' }
     let products,
       prices,
       customers,

@@ -376,10 +376,7 @@ describe('StripeSync - Sensible Defaults', () => {
       expect((stripeSync as any).config.logger).toBe(mockPinoLogger)
 
       // Verify logger was used
-      expect(mockPinoLogger.info).toHaveBeenCalledWith(
-        expect.any(Object),
-        'StripeSync initialized'
-      )
+      expect(mockPinoLogger.info).toHaveBeenCalledWith(expect.any(Object), 'StripeSync initialized')
     })
 
     it('should override all defaults when full config is provided', () => {
@@ -400,10 +397,7 @@ describe('StripeSync - Sensible Defaults', () => {
         }),
       })
 
-      expect(customLogger.info).toHaveBeenCalledWith(
-        expect.any(Object),
-        'StripeSync initialized'
-      )
+      expect(customLogger.info).toHaveBeenCalledWith(expect.any(Object), 'StripeSync initialized')
     })
   })
 
