@@ -110,10 +110,7 @@ export async function backfillCommand(options: CliOptions, entityName: string): 
       databaseUrl,
       ngrokAuthToken: '', // Not needed for backfill
     }
-    const schema = process.env.SCHEMA || 'stripe'
-
-    console.log(chalk.blue(`Backfilling ${entityName} from Stripe...`))
-    console.log(chalk.gray(`Schema: ${schema}`))
+    console.log(chalk.blue(`Backfilling ${entityName} from Stripe in 'stripe' schema...`))
     console.log(chalk.gray(`Database: ${config.databaseUrl.replace(/:[^:@]+@/, ':****@')}`))
 
     // Create StripeSync instance
@@ -125,7 +122,6 @@ export async function backfillCommand(options: CliOptions, entityName: string): 
 
     const stripeSync = new StripeSync({
       databaseUrl: config.databaseUrl,
-      schema,
       stripeSecretKey: config.stripeApiKey,
       stripeApiVersion: process.env.STRIPE_API_VERSION || '2020-08-27',
       autoExpandLists: process.env.AUTO_EXPAND_LISTS === 'true',
@@ -181,16 +177,12 @@ export async function migrateCommand(options: CliOptions): Promise<void> {
       databaseUrl = answers.databaseUrl
     }
 
-    const schema = process.env.SCHEMA || 'stripe'
-
-    console.log(chalk.blue('Running database migrations...'))
-    console.log(chalk.gray(`Schema: ${schema}`))
+    console.log(chalk.blue("Running database migrations in 'stripe' schema..."))
     console.log(chalk.gray(`Database: ${databaseUrl.replace(/:[^:@]+@/, ':****@')}`))
 
     try {
       await runMigrations({
         databaseUrl,
-        schema,
       })
       console.log(chalk.green('✓ Migrations completed successfully'))
     } catch (migrationError) {
@@ -413,7 +405,7 @@ export async function syncCommand(options: CliOptions): Promise<void> {
 
     // Run initial backfill of all Stripe data
     console.log(chalk.blue('\nStarting initial backfill of all Stripe data...'))
-    const backfillResult = await stripeSync.syncBackfill({ object: 'all' })
+    const backfillResult = await stripeSync.syncBackfill()
     const totalSynced = Object.values(backfillResult).reduce(
       (sum, result) => sum + (result?.synced || 0),
       0
