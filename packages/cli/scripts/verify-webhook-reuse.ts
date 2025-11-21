@@ -328,7 +328,9 @@ async function main() {
     // Test 7: Multi-Account Webhook Isolation
     console.log(chalk.blue('📝 Test 7: Multi-Account Webhook Isolation'))
     console.log(chalk.gray('   Testing that webhooks are isolated per account'))
-    console.log(chalk.gray('   Expected: listManagedWebhooks() only returns current account webhooks'))
+    console.log(
+      chalk.gray('   Expected: listManagedWebhooks() only returns current account webhooks')
+    )
 
     // Get current account ID
     const currentAccountId = await stripeSync['getAccountId']()
@@ -360,9 +362,7 @@ async function main() {
       `INSERT INTO "stripe"."accounts" ("_raw_data", "first_synced_at", "_last_synced_at")
        VALUES ($1, now(), now())
        ON CONFLICT (id) DO NOTHING`,
-      [
-        JSON.stringify({ id: differentAccountId, type: 'test_account' }),
-      ]
+      [JSON.stringify({ id: differentAccountId, type: 'test_account' })]
     )
 
     // Now insert the webhook with the different account_id
@@ -381,27 +381,33 @@ async function main() {
       ]
     )
 
-    console.log(chalk.gray(`   - Inserted fake webhook with different account_id: ${differentAccountId}`))
+    console.log(
+      chalk.gray(`   - Inserted fake webhook with different account_id: ${differentAccountId}`)
+    )
 
     // List webhooks - should only see current account's webhook
     const webhooks7 = await stripeSync['listManagedWebhooks']()
 
     if (webhooks7.length === 1) {
-      console.log(chalk.green(`   ✓ SUCCESS: listManagedWebhooks() returned 1 webhook (correct account filtering)`))
+      console.log(
+        chalk.green(
+          `   ✓ SUCCESS: listManagedWebhooks() returned 1 webhook (correct account filtering)`
+        )
+      )
       if ((webhooks7[0] as any).account_id === currentAccountId) {
         console.log(chalk.green(`   ✓ Confirmed: Returned webhook has correct account_id`))
       } else {
         hasFailures = true
         console.log(
-          chalk.red(
-            `   ❌ FAIL: Webhook has wrong account_id: ${(webhooks7[0] as any).account_id}`
-          )
+          chalk.red(`   ❌ FAIL: Webhook has wrong account_id: ${(webhooks7[0] as any).account_id}`)
         )
       }
     } else {
       hasFailures = true
       console.log(
-        chalk.red(`   ❌ FAIL: Expected 1 webhook, found ${webhooks7.length} (account filtering not working)`)
+        chalk.red(
+          `   ❌ FAIL: Expected 1 webhook, found ${webhooks7.length} (account filtering not working)`
+        )
       )
     }
 
@@ -411,10 +417,9 @@ async function main() {
       [fakeWebhookId]
     )
 
-    await stripeSync['postgresClient'].query(
-      `DELETE FROM "stripe"."accounts" WHERE id = $1`,
-      [differentAccountId]
-    )
+    await stripeSync['postgresClient'].query(`DELETE FROM "stripe"."accounts" WHERE id = $1`, [
+      differentAccountId,
+    ])
 
     console.log(chalk.gray(`   - Cleaned up fake webhook and fake account`))
     console.log()
