@@ -2222,21 +2222,21 @@ export class StripeSync {
 
   // Managed Webhook CRUD methods
   async createManagedWebhook(
-    baseUrl: string,
+    url: string,
     params: Omit<Stripe.WebhookEndpointCreateParams, 'url'>
   ): Promise<Stripe.WebhookEndpoint> {
-    // Create webhook at the base URL (no UUID)
+    // Create webhook at the exact URL (no UUID appended)
     // Always set metadata to identify managed webhooks
     const webhook = await this.stripe.webhookEndpoints.create({
       ...params,
-      url: baseUrl,
+      url,
       metadata: {
         ...params.metadata,
         managed_by: 'stripe-sync',
       },
     })
 
-    // Store webhook in database (without uuid)
+    // Store webhook in database
     const accountId = await this.getAccountId()
     try {
       await this.upsertManagedWebhooks([webhook], accountId)
@@ -2249,7 +2249,7 @@ export class StripeSync {
         pgError.constraint === 'managed_webhooks_url_account_unique'
       ) {
         this.config.logger?.warn(
-          { webhookId: webhook.id, url: baseUrl, accountId, error },
+          { webhookId: webhook.id, url, accountId, error },
           'Unique constraint violation on webhook URL+account - another instance created it. Cleaning up duplicate.'
         )
 
@@ -2264,7 +2264,7 @@ export class StripeSync {
         }
 
         // Return the existing webhook from database
-        const existingWebhook = await this.getManagedWebhookByUrl(baseUrl)
+        const existingWebhook = await this.getManagedWebhookByUrl(url)
         if (existingWebhook) {
           return existingWebhook
         }
@@ -2277,13 +2277,13 @@ export class StripeSync {
   }
 
   async findOrCreateManagedWebhook(
-    baseUrl: string,
+    url: string,
     params: Omit<Stripe.WebhookEndpointCreateParams, 'url'>
   ): Promise<Stripe.WebhookEndpoint> {
     // Use advisory lock to prevent race conditions when multiple instances
     // try to create webhooks for the same URL simultaneously
     const accountId = await this.getAccountId()
-    const lockKey = `webhook:${accountId}:${baseUrl}`
+    const lockKey = `webhook:${accountId}:${url}`
 
     return this.postgresClient.withAdvisoryLock(lockKey, async () => {
       // Query database for existing webhooks
@@ -2291,10 +2291,10 @@ export class StripeSync {
 
       // Try to find a webhook that matches the URL exactly
       for (const existingWebhook of existingWebhooks) {
-        // If URL doesn't match exactly, delete it (handles UUID webhooks, old tunnels, etc.)
-        if (existingWebhook.url !== baseUrl) {
+        // If URL doesn't match exactly, delete it (handles old webhooks with different URLs)
+        if (existingWebhook.url !== url) {
           this.config.logger?.info(
-            { webhookId: existingWebhook.id, oldUrl: existingWebhook.url, newUrl: baseUrl },
+            { webhookId: existingWebhook.id, oldUrl: existingWebhook.url, newUrl: url },
             'Webhook URL mismatch, deleting and will recreate'
           )
           try {
@@ -2354,7 +2354,7 @@ export class StripeSync {
 
             if (!existsInDb) {
               // This is an orphaned managed webhook - delete it from Stripe
-              // This includes old UUID-based webhooks, old tunnel URLs, and any other orphaned managed webhooks
+              // This includes old webhooks with different URLs and any other orphaned managed webhooks
               this.config.logger?.warn(
                 { webhookId: stripeWebhook.id, url: stripeWebhook.url },
                 'Found orphaned managed webhook in Stripe, deleting'
@@ -2369,7 +2369,7 @@ export class StripeSync {
       }
 
       // No valid matching webhook found, create a new one
-      return this.createManagedWebhook(baseUrl, params)
+      return this.createManagedWebhook(url, params)
     })
   }
 
