@@ -2250,12 +2250,24 @@ export class StripeSync {
           await this.stripe.webhookEndpoints.del(existingWebhook.id)
           await this.postgresClient.delete('_managed_webhooks', existingWebhook.id)
         } catch (error) {
-          // Webhook doesn't exist in Stripe anymore, delete from database
-          this.config.logger?.warn(
-            { error, webhookId: existingWebhook.id },
-            'Webhook not found in Stripe, removing from database'
-          )
-          await this.postgresClient.delete('_managed_webhooks', existingWebhook.id)
+          // Only delete from database if it's a 404 (webhook deleted in Stripe)
+          // Other errors (network issues, rate limits, etc.) should not remove from DB
+          const stripeError = error as { statusCode?: number; code?: string }
+          if (stripeError?.statusCode === 404 || stripeError?.code === 'resource_missing') {
+            this.config.logger?.warn(
+              { error, webhookId: existingWebhook.id },
+              'Webhook not found in Stripe (404), removing from database'
+            )
+            await this.postgresClient.delete('_managed_webhooks', existingWebhook.id)
+          } else {
+            // For other errors, log but don't delete - could be transient
+            this.config.logger?.error(
+              { error, webhookId: existingWebhook.id },
+              'Error retrieving webhook from Stripe, keeping in database'
+            )
+            // Re-throw to prevent continuing with potentially invalid state
+            throw error
+          }
         }
       }
 
