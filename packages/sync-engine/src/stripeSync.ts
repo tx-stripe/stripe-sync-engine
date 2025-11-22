@@ -2228,10 +2228,11 @@ export class StripeSync {
     // try to create webhooks for the same URL simultaneously
     // Lock is acquired at beginning and released at end via withAdvisoryLock wrapper
     const accountId = await this.getAccountId()
+    // A webhook should be guaranteed unique over account id and url
     const lockKey = `webhook:${accountId}:${url}`
 
     return this.postgresClient.withAdvisoryLock(lockKey, async () => {
-      // Step 1: Check if we already have a webhook for this URL in the database
+      // Step 1: Check if we already have a webhook for this URL (and account ID) in the database
       const existingWebhook = await this.getManagedWebhookByUrl(url)
 
       if (existingWebhook) {

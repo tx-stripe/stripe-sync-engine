@@ -61,8 +61,9 @@ echo ""
 echo "🚀 Step 3: Starting CLI to test webhook creation..."
 echo ""
 
-# Start CLI in background with KEEP_WEBHOOKS_ON_SHUTDOWN=false for testing
-KEEP_WEBHOOKS_ON_SHUTDOWN=false npm run dev start > /tmp/cli-test.log 2>&1 &
+# Start CLI in background with KEEP_WEBHOOKS_ON_SHUTDOWN=false and SKIP_BACKFILL=true for testing
+# This ensures we only test webhook processing, not backfill
+KEEP_WEBHOOKS_ON_SHUTDOWN=false SKIP_BACKFILL=true npm run dev start > /tmp/cli-test.log 2>&1 &
 CLI_PID=$!
 
 # Wait for startup (give it time to create webhook and run migrations)
@@ -82,7 +83,7 @@ if ps -p $CLI_PID > /dev/null 2>&1; then
     # Step 4: Verify webhook in database
     echo ""
     echo "🔍 Step 4: Checking database for managed webhook..."
-    WEBHOOK_COUNT=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe._managed_webhooks;" 2>/dev/null | tr -d ' ')
+    WEBHOOK_COUNT=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe._managed_webhooks;" 2>/dev/null | tr -d ' ')
 
     # Default to 0 if empty
     WEBHOOK_COUNT=${WEBHOOK_COUNT:-0}
@@ -91,10 +92,10 @@ if ps -p $CLI_PID > /dev/null 2>&1; then
         echo "✓ Found $WEBHOOK_COUNT webhook(s) in database"
         echo ""
         echo "Webhook details:"
-        docker exec stripe-sync-test-db psql -U postgres -d app_db -c "SELECT id, url, enabled, status FROM stripe._managed_webhooks;" 2>/dev/null
+        docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -c "SELECT id, url, enabled, status FROM stripe._managed_webhooks;" 2>/dev/null
 
         # Get webhook URL for testing
-        WEBHOOK_URL=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT url FROM stripe._managed_webhooks LIMIT 1;" 2>/dev/null | tr -d ' ')
+        WEBHOOK_URL=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT url FROM stripe._managed_webhooks LIMIT 1;" 2>/dev/null | tr -d ' ')
         echo ""
         echo "   Webhook URL: $WEBHOOK_URL"
     else
@@ -128,44 +129,71 @@ if ps -p $CLI_PID > /dev/null 2>&1; then
 
     echo ""
     echo "   Waiting for webhook processing..."
-    sleep 3
+    sleep 8  # Increased wait time to allow webhook processing
+
+    # Track test failures
+    TEST_FAILED=0
 
     # Step 5: Verify webhook data in database tables
     echo ""
     echo "🔍 Step 6: Verifying webhook data in database tables..."
 
     # Check customers table
-    CUSTOMER_COUNT=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.customers;" 2>/dev/null | tr -d ' ' || echo "0")
+    CUSTOMER_COUNT=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.customers;" 2>/dev/null | tr -d ' ')
+    CUSTOMER_COUNT=${CUSTOMER_COUNT:-0}  # Default to 0 if empty
     echo "   Customers table: $CUSTOMER_COUNT rows"
-    if [ "$CUSTOMER_COUNT" -gt 0 ]; then
+    if [ "$CUSTOMER_COUNT" -gt 0 ] 2>/dev/null; then
         echo "   ✓ Customer data found"
-        docker exec stripe-sync-test-db psql -U postgres -d app_db -c "SELECT id, email, name, created FROM stripe.customers LIMIT 1;" 2>/dev/null | head -n 5
+        docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -c "SELECT id, email, name, created FROM stripe.customers LIMIT 1;" 2>/dev/null | head -n 5
     else
-        echo "   ⚠ No customer data found (webhook may not have processed yet)"
+        echo "   ❌ FAIL: No customer data found - webhooks did not process customer.created event"
+        TEST_FAILED=1
     fi
 
     echo ""
 
     # Check products table
-    PRODUCT_COUNT=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.products;" 2>/dev/null | tr -d ' ' || echo "0")
+    PRODUCT_COUNT=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.products;" 2>/dev/null | tr -d ' ')
+    PRODUCT_COUNT=${PRODUCT_COUNT:-0}  # Default to 0 if empty
     echo "   Products table: $PRODUCT_COUNT rows"
-    if [ "$PRODUCT_COUNT" -gt 0 ]; then
+    if [ "$PRODUCT_COUNT" -gt 0 ] 2>/dev/null; then
         echo "   ✓ Product data found"
-        docker exec stripe-sync-test-db psql -U postgres -d app_db -c "SELECT id, name, active, created FROM stripe.products LIMIT 1;" 2>/dev/null | head -n 5
+        docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -c "SELECT id, name, active, created FROM stripe.products LIMIT 1;" 2>/dev/null | head -n 5
     else
-        echo "   ⚠ No product data found (webhook may not have processed yet)"
+        echo "   ❌ FAIL: No product data found - webhooks did not process product.created event"
+        TEST_FAILED=1
     fi
 
     echo ""
 
     # Check prices table
-    PRICE_COUNT=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.prices;" 2>/dev/null | tr -d ' ' || echo "0")
+    PRICE_COUNT=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.prices;" 2>/dev/null | tr -d ' ')
+    PRICE_COUNT=${PRICE_COUNT:-0}  # Default to 0 if empty
     echo "   Prices table: $PRICE_COUNT rows"
-    if [ "$PRICE_COUNT" -gt 0 ]; then
+    if [ "$PRICE_COUNT" -gt 0 ] 2>/dev/null; then
         echo "   ✓ Price data found"
-        docker exec stripe-sync-test-db psql -U postgres -d app_db -c "SELECT id, product, currency, unit_amount, created FROM stripe.prices LIMIT 1;" 2>/dev/null | head -n 5
+        docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -c "SELECT id, product, currency, unit_amount, created FROM stripe.prices LIMIT 1;" 2>/dev/null | head -n 5
     else
-        echo "   ⚠ No price data found (webhook may not have processed yet)"
+        echo "   ❌ FAIL: No price data found - webhooks did not process price.created event"
+        TEST_FAILED=1
+    fi
+
+    # Verify data came from webhooks, not backfill
+    echo ""
+    echo "🔍 Verifying data came from webhooks (not backfill)..."
+    echo "   Checking that _sync_status is empty (backfill was skipped)..."
+
+    # Check if sync status table has any entries (would indicate backfill ran)
+    SYNC_STATUS_COUNT=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe._sync_status;" 2>/dev/null | tr -d ' ')
+    SYNC_STATUS_COUNT=${SYNC_STATUS_COUNT:-0}  # Default to 0 if empty
+
+    if [ "$SYNC_STATUS_COUNT" -eq 0 ] 2>/dev/null; then
+        echo "   ✓ Sync status table is empty - backfill was skipped!"
+        echo "   ✓ All data came from webhook processing"
+    else
+        echo "   ❌ FAIL: Sync status has $SYNC_STATUS_COUNT entries"
+        echo "   This suggests backfill ran (SKIP_BACKFILL may not have worked)"
+        TEST_FAILED=1
     fi
 
     # Step 6: Gracefully shutdown CLI
@@ -181,7 +209,7 @@ if ps -p $CLI_PID > /dev/null 2>&1; then
     # Step 7: Verify cleanup
     echo ""
     echo "🧹 Step 8: Verifying cleanup after shutdown..."
-    WEBHOOK_COUNT_AFTER=$(docker exec stripe-sync-test-db psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe._managed_webhooks;" 2>/dev/null | tr -d ' ')
+    WEBHOOK_COUNT_AFTER=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe._managed_webhooks;" 2>/dev/null | tr -d ' ')
 
     if [ "$WEBHOOK_COUNT_AFTER" -eq 0 ] 2>/dev/null || [ -z "$WEBHOOK_COUNT_AFTER" ]; then
         echo "✓ Webhook successfully deleted from database"
@@ -190,7 +218,7 @@ if ps -p $CLI_PID > /dev/null 2>&1; then
         echo "   Cleanup may not have completed properly"
         echo ""
         echo "Remaining webhooks:"
-        docker exec stripe-sync-test-db psql -U postgres -d app_db -c "SELECT id, url FROM stripe._managed_webhooks;" 2>/dev/null
+        docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -c "SELECT id, url FROM stripe._managed_webhooks;" 2>/dev/null
     fi
 else
     echo "❌ CLI failed to start"
@@ -213,7 +241,15 @@ echo "- ✓ Migrations run automatically via StripeSync"
 echo "- ✓ Webhook persisted to database"
 echo "- ✓ Test webhook events triggered (customer, product, price)"
 echo "- ✓ Webhook processing verified ($CUSTOMER_COUNT customers, $PRODUCT_COUNT products, $PRICE_COUNT prices)"
+echo "- ✓ Data source verified (webhooks, not backfill) via _sync_status check"
 echo "- ✓ Graceful shutdown completed"
 echo "- ✓ Webhook cleanup verified (removed from Stripe + DB)"
 echo ""
 echo "View full CLI log: /tmp/cli-test.log"
+
+# Exit with failure if any test failed
+if [ "$TEST_FAILED" -eq 1 ]; then
+    echo ""
+    echo "❌ Test failed: Webhook event processing did not work correctly"
+    exit 1
+fi
