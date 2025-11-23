@@ -349,11 +349,13 @@ export async function syncCommand(options: CliOptions): Promise<void> {
       app.use(webhookRoute, express.raw({ type: 'application/json' }))
 
       app.post(webhookRoute, async (req, res) => {
+        console.log('[Webhook] Received webhook request')
         const sig = req.headers['stripe-signature']
         if (!sig || typeof sig !== 'string') {
           console.error('[Webhook] Missing stripe-signature header')
           return res.status(400).send({ error: 'Missing stripe-signature header' })
         }
+        console.log('[Webhook] Signature present, processing...')
 
         const rawBody = req.body
 
@@ -408,14 +410,18 @@ export async function syncCommand(options: CliOptions): Promise<void> {
       })
     }
 
-    // Run initial backfill of all Stripe data
-    console.log(chalk.blue('\nStarting initial backfill of all Stripe data...'))
-    const backfillResult = await stripeSync.syncBackfill()
-    const totalSynced = Object.values(backfillResult).reduce(
-      (sum, result) => sum + (result?.synced || 0),
-      0
-    )
-    console.log(chalk.green(`✓ Backfill complete: ${totalSynced} objects synced`))
+    // Run initial backfill of all Stripe data (unless disabled)
+    if (process.env.SKIP_BACKFILL !== 'true') {
+      console.log(chalk.blue('\nStarting initial backfill of all Stripe data...'))
+      const backfillResult = await stripeSync.syncBackfill()
+      const totalSynced = Object.values(backfillResult).reduce(
+        (sum, result) => sum + (result?.synced || 0),
+        0
+      )
+      console.log(chalk.green(`✓ Backfill complete: ${totalSynced} objects synced`))
+    } else {
+      console.log(chalk.yellow('\n⏭️  Skipping initial backfill (SKIP_BACKFILL=true)'))
+    }
 
     console.log(
       chalk.cyan('\n● Streaming live changes...') + chalk.gray(' [press Ctrl-C to abort]')
