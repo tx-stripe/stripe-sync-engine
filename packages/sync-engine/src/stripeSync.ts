@@ -872,7 +872,7 @@ export class StripeSync {
   }
 
   async syncBackfill(params?: SyncBackfillParams): Promise<SyncBackfill> {
-    const { object } = params ?? { object: 'all' }
+    const { object } = params ?? { object: this.getSupportedEventTypes }
     let products,
       prices,
       customers,
