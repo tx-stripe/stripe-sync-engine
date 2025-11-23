@@ -492,7 +492,9 @@ async function main() {
 
           if (webhook8c1.id === webhook8a1.id) {
             console.log(
-              chalk.green('   ✓ SUCCESS: Account 1 correctly reused its own webhook (no interference)')
+              chalk.green(
+                '   ✓ SUCCESS: Account 1 correctly reused its own webhook (no interference)'
+              )
             )
           } else {
             hasFailures = true
