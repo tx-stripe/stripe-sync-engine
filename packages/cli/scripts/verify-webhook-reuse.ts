@@ -325,107 +325,8 @@ async function main() {
     }
     console.log()
 
-    // Test 7: Multi-Account Webhook Isolation
-    console.log(chalk.blue('📝 Test 7: Multi-Account Webhook Isolation'))
-    console.log(chalk.gray('   Testing that webhooks are isolated per account'))
-    console.log(
-      chalk.gray('   Expected: listManagedWebhooks() only returns current account webhooks')
-    )
-
-    // Get current account ID
-    const currentAccountId = await stripeSync['getAccountId']()
-    console.log(chalk.gray(`   - Current account: ${currentAccountId}`))
-
-    // Clean up any leftover fake webhook from previous test runs
-    const fakeWebhookId = 'we_fake_different_account'
-    await stripeSync['postgresClient'].query(
-      `DELETE FROM "stripe"."_managed_webhooks" WHERE id = $1`,
-      [fakeWebhookId]
-    )
-
-    // Create a webhook for current account
-    const webhook7 = await stripeSync.findOrCreateManagedWebhook(
-      'https://test7.example.com/stripe-webhooks',
-      {
-        enabled_events: ['*'],
-      }
-    )
-    createdWebhookIds.push(webhook7.id)
-
-    // Manually insert a webhook with a different account_id
-    // We'll use the current account ID as base and modify it slightly to create a different but valid-looking ID
-    const differentAccountId = currentAccountId + '_different'
-
-    // First, insert a fake account to satisfy the foreign key constraint
-    // Note: id is a generated column, so we only need to insert _raw_data
-    await stripeSync['postgresClient'].query(
-      `INSERT INTO "stripe"."accounts" ("_raw_data", "first_synced_at", "_last_synced_at")
-       VALUES ($1, now(), now())
-       ON CONFLICT (id) DO NOTHING`,
-      [JSON.stringify({ id: differentAccountId, type: 'test_account' })]
-    )
-
-    // Now insert the webhook with the different account_id
-    await stripeSync['postgresClient'].query(
-      `INSERT INTO "stripe"."_managed_webhooks"
-       (id, url, enabled_events, secret, status, created, account_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        fakeWebhookId,
-        'https://test7-different.example.com/stripe-webhooks',
-        JSON.stringify(['*']),
-        'whsec_fake_secret',
-        'enabled',
-        Math.floor(Date.now() / 1000),
-        differentAccountId,
-      ]
-    )
-
-    console.log(
-      chalk.gray(`   - Inserted fake webhook with different account_id: ${differentAccountId}`)
-    )
-
-    // List webhooks - should only see current account's webhook
-    const webhooks7 = await stripeSync['listManagedWebhooks']()
-
-    if (webhooks7.length === 1) {
-      console.log(
-        chalk.green(
-          `   ✓ SUCCESS: listManagedWebhooks() returned 1 webhook (correct account filtering)`
-        )
-      )
-      if ((webhooks7[0] as any).account_id === currentAccountId) {
-        console.log(chalk.green(`   ✓ Confirmed: Returned webhook has correct account_id`))
-      } else {
-        hasFailures = true
-        console.log(
-          chalk.red(`   ❌ FAIL: Webhook has wrong account_id: ${(webhooks7[0] as any).account_id}`)
-        )
-      }
-    } else {
-      hasFailures = true
-      console.log(
-        chalk.red(
-          `   ❌ FAIL: Expected 1 webhook, found ${webhooks7.length} (account filtering not working)`
-        )
-      )
-    }
-
-    // Cleanup fake webhook and fake account
-    await stripeSync['postgresClient'].query(
-      `DELETE FROM "stripe"."_managed_webhooks" WHERE id = $1`,
-      [fakeWebhookId]
-    )
-
-    await stripeSync['postgresClient'].query(`DELETE FROM "stripe"."accounts" WHERE id = $1`, [
-      differentAccountId,
-    ])
-
-    console.log(chalk.gray(`   - Cleaned up fake webhook and fake account`))
-    console.log()
-
-    // Test 8: Concurrent Execution (Race Condition Test)
-    console.log(chalk.blue('📝 Test 8: Concurrent Execution (Race Condition)'))
+    // Test 7: Concurrent Execution (Race Condition Test)
+    console.log(chalk.blue('📝 Test 7: Concurrent Execution (Race Condition)'))
     console.log(chalk.gray('   Testing that concurrent calls do not create duplicate webhooks'))
     console.log(chalk.gray('   Expected: All concurrent calls return the same webhook'))
 
@@ -495,6 +396,182 @@ async function main() {
       uniqueIds.forEach((id) => createdWebhookIds.push(id))
     }
     console.log()
+
+    // Test 8: Real Multi-Account Webhook Isolation
+    console.log(chalk.blue('📝 Test 8: Real Multi-Account Webhook Isolation'))
+    console.log(chalk.gray('   Testing with actual different Stripe accounts/API keys'))
+    console.log(chalk.gray('   Expected: Webhooks isolated per account, no cross-account reuse'))
+
+    const STRIPE_API_KEY_2 = process.env.STRIPE_API_KEY_2
+
+    if (!STRIPE_API_KEY_2) {
+      hasFailures = true
+      console.log(chalk.red('   ❌ FAIL: STRIPE_API_KEY_2 environment variable is required'))
+      console.log(chalk.yellow('   Set STRIPE_API_KEY_2 to run multi-account isolation tests'))
+      console.log()
+    } else {
+      try {
+        // Create second StripeSync instance with different API key
+        // Account ID will be automatically retrieved from the API key
+        const stripeSync2 = new StripeSync({
+          databaseUrl: DATABASE_URL!,
+          stripeSecretKey: STRIPE_API_KEY_2,
+          stripeApiVersion: '2020-08-27',
+          poolConfig,
+        })
+
+        // Get both account IDs for clarity
+        const account1Id = await stripeSync['getAccountId']()
+        const account2Id = await stripeSync2['getAccountId']()
+
+        console.log(chalk.gray(`   - Account 1: ${account1Id}`))
+        console.log(chalk.gray(`   - Account 2: ${account2Id}`))
+
+        if (account1Id === account2Id) {
+          hasFailures = true
+          console.log(
+            chalk.red(
+              '   ❌ FAIL: Both API keys resolve to same account - cannot test multi-account isolation'
+            )
+          )
+        } else {
+          // Test 8a: Both accounts can create webhooks with same URL independently
+          const sharedUrl = 'https://test8-shared.example.com/stripe-webhooks'
+
+          const webhook8a1 = await stripeSync.findOrCreateManagedWebhook(sharedUrl, {
+            enabled_events: ['*'],
+          })
+          createdWebhookIds.push(webhook8a1.id)
+
+          const webhook8a2 = await stripeSync2.findOrCreateManagedWebhook(sharedUrl, {
+            enabled_events: ['*'],
+          })
+          createdWebhookIds.push(webhook8a2.id)
+
+          if (webhook8a1.id !== webhook8a2.id) {
+            console.log(
+              chalk.green('   ✓ SUCCESS: Each account created independent webhook for same URL!')
+            )
+            console.log(chalk.cyan(`   - Account 1 Webhook ID: ${webhook8a1.id}`))
+            console.log(chalk.cyan(`   - Account 2 Webhook ID: ${webhook8a2.id}`))
+          } else {
+            hasFailures = true
+            console.log(
+              chalk.red(
+                '   ❌ FAIL: Both accounts got same webhook ID (unexpected cross-account reuse)'
+              )
+            )
+          }
+
+          // Test 8b: listManagedWebhooks only returns current account's webhooks
+          const webhooks8b1 = await stripeSync['listManagedWebhooks']()
+          const webhooks8b2 = await stripeSync2['listManagedWebhooks']()
+
+          const hasSharedUrlAccount1 = webhooks8b1.some((w: any) => w.url === sharedUrl)
+          const hasSharedUrlAccount2 = webhooks8b2.some((w: any) => w.url === sharedUrl)
+
+          if (hasSharedUrlAccount1 && hasSharedUrlAccount2) {
+            console.log(
+              chalk.green(
+                '   ✓ SUCCESS: Each account correctly lists its own webhook for shared URL'
+              )
+            )
+          } else {
+            hasFailures = true
+            console.log(
+              chalk.red(
+                `   ❌ FAIL: Account filtering issue - Account1: ${hasSharedUrlAccount1}, Account2: ${hasSharedUrlAccount2}`
+              )
+            )
+          }
+
+          // Test 8c: Reusing webhook on same account still works (no interference)
+          const webhook8c1 = await stripeSync.findOrCreateManagedWebhook(sharedUrl, {
+            enabled_events: ['*'],
+          })
+
+          if (webhook8c1.id === webhook8a1.id) {
+            console.log(
+              chalk.green(
+                '   ✓ SUCCESS: Account 1 correctly reused its own webhook (no interference)'
+              )
+            )
+          } else {
+            hasFailures = true
+            console.log(
+              chalk.red(
+                `   ❌ FAIL: Account 1 created new webhook instead of reusing: ${webhook8a1.id} vs ${webhook8c1.id}`
+              )
+            )
+            createdWebhookIds.push(webhook8c1.id)
+          }
+
+          // Test 8d: Concurrent calls across accounts don't interfere
+          console.log(chalk.gray('   - Testing concurrent calls across accounts...'))
+          const concurrentUrl8d = 'https://test8-concurrent.example.com/stripe-webhooks'
+
+          const concurrentResults = await Promise.all([
+            stripeSync.findOrCreateManagedWebhook(concurrentUrl8d, { enabled_events: ['*'] }),
+            stripeSync.findOrCreateManagedWebhook(concurrentUrl8d, { enabled_events: ['*'] }),
+            stripeSync2.findOrCreateManagedWebhook(concurrentUrl8d, { enabled_events: ['*'] }),
+            stripeSync2.findOrCreateManagedWebhook(concurrentUrl8d, { enabled_events: ['*'] }),
+          ])
+
+          const account1Webhooks = concurrentResults.slice(0, 2)
+          const account2Webhooks = concurrentResults.slice(2, 4)
+
+          // All webhooks from account 1 should have same ID
+          const account1Ids = new Set(account1Webhooks.map((w) => w.id))
+          // All webhooks from account 2 should have same ID
+          const account2Ids = new Set(account2Webhooks.map((w) => w.id))
+
+          if (account1Ids.size === 1 && account2Ids.size === 1) {
+            const account1Id = Array.from(account1Ids)[0]
+            const account2Id = Array.from(account2Ids)[0]
+
+            if (account1Id !== account2Id) {
+              console.log(
+                chalk.green('   ✓ SUCCESS: Concurrent calls correctly isolated per account!')
+              )
+              console.log(chalk.cyan(`   - Account 1 all returned: ${account1Id}`))
+              console.log(chalk.cyan(`   - Account 2 all returned: ${account2Id}`))
+              createdWebhookIds.push(account1Id, account2Id)
+            } else {
+              hasFailures = true
+              console.log(
+                chalk.red('   ❌ FAIL: Both accounts got same webhook ID in concurrent test')
+              )
+            }
+          } else {
+            hasFailures = true
+            console.log(
+              chalk.red(
+                `   ❌ FAIL: Inconsistent webhook IDs within same account - Account1: ${account1Ids.size} unique, Account2: ${account2Ids.size} unique`
+              )
+            )
+          }
+
+          // Cleanup webhooks from account 2
+          console.log(chalk.gray('   - Cleaning up account 2 webhooks...'))
+          const account2AllWebhooks = await stripeSync2['listManagedWebhooks']()
+          for (const webhook of account2AllWebhooks) {
+            try {
+              await stripeSync2.deleteManagedWebhook((webhook as any).id)
+            } catch (error) {
+              console.log(
+                chalk.yellow(`   - Warning: Failed to delete webhook ${(webhook as any).id}`)
+              )
+            }
+          }
+        }
+      } catch (error) {
+        hasFailures = true
+        console.log(chalk.red('   ❌ FAIL: Error during multi-account test'))
+        console.log(chalk.red(`   - ${error}`))
+      }
+
+      console.log()
+    }
 
     console.log(chalk.blue('====================================='))
 
