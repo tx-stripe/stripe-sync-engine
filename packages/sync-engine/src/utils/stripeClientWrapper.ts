@@ -71,9 +71,18 @@ function wrapResource(
 
       // If it's a function (API method), wrap it with retry logic
       if (typeof original === 'function') {
-        return function (this: unknown, ...args: unknown[]) {
+        // Create wrapper function that preserves spy properties
+        const wrappedFunction = function (this: unknown, ...args: unknown[]) {
           // Bind the correct context and call the original function
           const result = original.apply(target, args)
+
+          // Check if result is an async iterable (Stripe auto-pagination)
+          // Auto-pagination returns objects with [Symbol.asyncIterator]
+          if (result && typeof result === 'object' && Symbol.asyncIterator in result) {
+            // Return as-is - don't wrap async iterables
+            // The individual API calls within the iteration will be retried by the underlying implementation
+            return result
+          }
 
           // Only wrap if it returns a Promise (actual API call)
           if (isPromise(result)) {
@@ -84,6 +93,15 @@ function wrapResource(
           // Non-promise return values pass through (rare, but possible)
           return result
         }
+
+        // Preserve spy properties from vitest/jest for testing
+        // This allows tests to use expect(stripeSync.stripe.products.list).toHaveBeenCalled()
+        if (original.mock !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(wrappedFunction as any).mock = original.mock
+        }
+
+        return wrappedFunction
       }
 
       // If it's a nested resource (e.g., stripe.checkout.sessions), recurse
