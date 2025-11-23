@@ -272,27 +272,33 @@ export class StripeSync {
   }
 
   async processWebhook(payload: Buffer | string, signature: string | undefined) {
-    let webhookSecret: string
+    // Start with user-provided webhook secret if available (non-managed webhook)
+    let webhookSecret: string | undefined = this.config.stripeWebhookSecret
 
-    // Check if we have a managed webhook in the database
-    const result = await this.postgresClient.query(
-      `SELECT secret FROM "stripe"."_managed_webhooks" LIMIT 1`
-    )
+    // If no user-provided secret, look up managed webhook secret from database
+    if (!webhookSecret) {
+      // Get account ID for this API key to find the correct webhook secret
+      const accountId = await this.getAccountId()
 
-    if (result.rows.length > 0) {
-      // Use secret from managed webhook
-      webhookSecret = result.rows[0].secret
-    } else {
-      // Use the webhook secret from config (non-managed webhook)
-      if (!this.config.stripeWebhookSecret) {
-        throw new Error(
-          'No webhook secret provided. Either create a managed webhook or configure stripeWebhookSecret.'
-        )
+      // Check if we have a managed webhook in the database for this specific account
+      const result = await this.postgresClient.query(
+        `SELECT secret FROM "stripe"."_managed_webhooks" WHERE account_id = $1 LIMIT 1`,
+        [accountId]
+      )
+
+      if (result.rows.length > 0) {
+        // Use secret from managed webhook for this specific account
+        webhookSecret = result.rows[0].secret
       }
-      webhookSecret = this.config.stripeWebhookSecret
     }
 
-    // Verify webhook signature using the secret
+    if (!webhookSecret) {
+      throw new Error(
+        'No webhook secret provided. Either create a managed webhook or configure stripeWebhookSecret.'
+      )
+    }
+
+    // Verify webhook signature using the correct secret
     const event = await this.stripe.webhooks.constructEventAsync(payload, signature!, webhookSecret)
 
     return this.processEvent(event)

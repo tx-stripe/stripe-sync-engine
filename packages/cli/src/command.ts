@@ -349,11 +349,13 @@ export async function syncCommand(options: CliOptions): Promise<void> {
       app.use(webhookRoute, express.raw({ type: 'application/json' }))
 
       app.post(webhookRoute, async (req, res) => {
+        console.log('[Webhook] Received webhook request')
         const sig = req.headers['stripe-signature']
         if (!sig || typeof sig !== 'string') {
           console.error('[Webhook] Missing stripe-signature header')
           return res.status(400).send({ error: 'Missing stripe-signature header' })
         }
+        console.log('[Webhook] Signature present, processing...')
 
         const rawBody = req.body
 
