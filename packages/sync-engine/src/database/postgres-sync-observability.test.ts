@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { PostgresClient } from './postgres'
+import { runMigrations } from './migrate'
 import pg from 'pg'
 
 describe('Observable Sync System Methods', () => {
@@ -11,6 +12,9 @@ describe('Observable Sync System Methods', () => {
     const databaseUrl =
       process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:54322/postgres'
 
+    // Run migrations to ensure schema and tables exist
+    await runMigrations({ databaseUrl })
+
     postgresClient = new PostgresClient({
       schema: 'stripe',
       poolConfig: {
@@ -19,11 +23,10 @@ describe('Observable Sync System Methods', () => {
     })
     pool = postgresClient.pool
 
-    // Ensure test account exists (id is generated from _raw_data->>'id')
-    await pool.query(
-      `INSERT INTO stripe.accounts (_raw_data, first_synced_at, _last_synced_at)
-       VALUES ('{"id": "${testAccountId}"}'::jsonb, now(), now())
-       ON CONFLICT (id) DO NOTHING`
+    // Ensure test account exists using the proper method
+    await postgresClient.upsertAccount(
+      { id: testAccountId, raw_data: { id: testAccountId, object: 'account' } },
+      `test_api_key_hash_${testAccountId}`
     )
   })
 
