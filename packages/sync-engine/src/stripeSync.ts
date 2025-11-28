@@ -44,7 +44,6 @@ export interface StripSyncInfo {
 export class StripeSync {
   stripe: Stripe
   postgresClient: PostgresClient
-  private cachedAccount: Stripe.Account | null = null
 
   constructor(private config: StripeSyncConfig) {
     // Create base Stripe client
@@ -99,17 +98,12 @@ export class StripeSync {
    * with fallback to Stripe API if not found (first-time setup or new API key).
    */
   async getAccountId(objectAccountId?: string): Promise<string> {
-    // If we have a cached account, use it
-    if (this.cachedAccount?.id) {
-      return this.cachedAccount.id
-    }
+    const apiKeyHash = hashApiKey(this.config.stripeSecretKey)
 
     // Try to lookup account ID from database using API key hash (fast path)
-    const apiKeyHash = hashApiKey(this.config.stripeSecretKey)
     try {
       const accountId = await this.postgresClient.getAccountIdByApiKeyHash(apiKeyHash)
       if (accountId) {
-        // Found in database - no API call needed!
         return accountId
       }
     } catch (error) {
@@ -130,8 +124,6 @@ export class StripeSync {
       this.config.logger?.error(error, 'Failed to retrieve account from Stripe API')
       throw new Error('Failed to retrieve Stripe account. Please ensure API key is valid.')
     }
-
-    this.cachedAccount = account
 
     // Upsert account info to database with API key hash for future lookups
     await this.upsertAccount(account, apiKeyHash)
@@ -164,14 +156,8 @@ export class StripeSync {
    * Get the current account being synced
    */
   async getCurrentAccount(): Promise<Stripe.Account | null> {
-    if (this.cachedAccount) {
-      return this.cachedAccount
-    }
-
-    // Populate cache by calling getAccountId
-    await this.getAccountId()
-
-    return this.cachedAccount
+    const apiKeyHash = hashApiKey(this.config.stripeSecretKey)
+    return await this.postgresClient.getAccountByApiKeyHash(apiKeyHash)
   }
 
   /**
@@ -236,13 +222,6 @@ export class StripeSync {
         )
       }
 
-      // If deleting current account, warn about cache invalidation
-      if (this.cachedAccount?.id === accountId) {
-        warnings.push(
-          'Warning: Deleting the current account. Cache will be cleared after deletion.'
-        )
-      }
-
       // Dry-run mode: just return counts
       if (dryRun) {
         this.config.logger?.info(`Dry-run complete: ${totalRecords} total records would be deleted`)
@@ -258,11 +237,6 @@ export class StripeSync {
         accountId,
         useTransaction
       )
-
-      // Clear cache if we deleted the current account
-      if (this.cachedAccount?.id === accountId) {
-        this.cachedAccount = null
-      }
 
       this.config.logger?.info(
         `Successfully deleted account ${accountId} with ${totalRecords} total records`
