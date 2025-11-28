@@ -23,6 +23,15 @@ describe('Postgres Sync Status Methods', () => {
     })
     pool = postgresClient.pool
 
+    // Create test accounts (required for foreign key constraint)
+    const testAccounts = [testAccountId, 'acct_test_1', 'acct_test_2']
+    for (const accountId of testAccounts) {
+      await postgresClient.upsertAccount(
+        { id: accountId, raw_data: { id: accountId, object: 'account' } },
+        `test_api_key_hash_${accountId}`
+      )
+    }
+
     // Clean up test data before running tests
     await pool.query('DELETE FROM stripe._sync_status WHERE resource LIKE $1', ['test_%'])
   })
@@ -96,8 +105,10 @@ describe('Postgres Sync Status Methods', () => {
       )
 
       const lastSyncedAt = new Date(result.rows[0].last_synced_at)
-      expect(lastSyncedAt.getTime()).toBeGreaterThanOrEqual(beforeTime.getTime())
-      expect(lastSyncedAt.getTime()).toBeLessThanOrEqual(afterTime.getTime())
+      // Allow 5 second tolerance for clock differences between client and server
+      const tolerance = 5000
+      expect(lastSyncedAt.getTime()).toBeGreaterThanOrEqual(beforeTime.getTime() - tolerance)
+      expect(lastSyncedAt.getTime()).toBeLessThanOrEqual(afterTime.getTime() + tolerance)
     })
   })
 
@@ -149,6 +160,7 @@ describe('Postgres Sync Status Methods', () => {
     it('should clear error_message when marking complete', async () => {
       const resource = 'test_products_clear_error'
 
+      await postgresClient.markSyncRunning(resource, testAccountId)
       await postgresClient.markSyncError(resource, testAccountId, 'Test error')
       await postgresClient.markSyncComplete(resource, testAccountId)
 
