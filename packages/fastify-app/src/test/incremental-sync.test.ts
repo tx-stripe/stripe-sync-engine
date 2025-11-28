@@ -440,15 +440,6 @@ describe('processNext', () => {
       } as Stripe.Product,
     ]
 
-    vitest.spyOn(stripeSync.stripe.products, 'list').mockResolvedValue({
-      object: 'list',
-      data: firstPageProducts,
-      has_more: true,
-      url: '/v1/products',
-    } as Stripe.ApiList<Stripe.Product>)
-
-    await stripeSync.processNext('product')
-
     // Second page
     const secondPageProducts: Stripe.Product[] = [
       {
@@ -459,17 +450,28 @@ describe('processNext', () => {
       } as Stripe.Product,
     ]
 
-    vitest.spyOn(stripeSync.stripe.products, 'list').mockResolvedValue({
-      object: 'list',
-      data: secondPageProducts,
-      has_more: false,
-      url: '/v1/products',
-    } as Stripe.ApiList<Stripe.Product>)
+    // Create spy once and chain mock responses - the Proxy wrapper makes
+    // each access return a new function, so we need to keep the spy reference
+    const listSpy = vitest.spyOn(stripeSync.stripe.products, 'list')
+    listSpy
+      .mockResolvedValueOnce({
+        object: 'list',
+        data: firstPageProducts,
+        has_more: true,
+        url: '/v1/products',
+      } as Stripe.ApiList<Stripe.Product>)
+      .mockResolvedValueOnce({
+        object: 'list',
+        data: secondPageProducts,
+        has_more: false,
+        url: '/v1/products',
+      } as Stripe.ApiList<Stripe.Product>)
 
+    await stripeSync.processNext('product')
     await stripeSync.processNext('product')
 
     // Should have been called with created filter using cursor
-    expect(stripeSync.stripe.products.list).toHaveBeenLastCalledWith({
+    expect(listSpy).toHaveBeenLastCalledWith({
       limit: 100,
       created: { gte: 1704902400 },
     })
