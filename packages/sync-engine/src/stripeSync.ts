@@ -5,15 +5,37 @@ import {
   StripeSyncConfig,
   Sync,
   SyncBackfill,
-  SyncBackfillParams,
+  SyncParams,
   SyncEntitlementsParams,
   SyncFeaturesParams,
+  ProcessNextResult,
+  SyncObject,
   type RevalidateEntity,
 } from './types'
 import { managedWebhookSchema } from './schemas/managed_webhook'
 import { type PoolConfig } from 'pg'
 import { createRetryableStripeClient } from './utils/stripeClientWrapper'
 import { hashApiKey } from './utils/hashApiKey'
+
+/**
+ * Configuration for a syncable resource type.
+ * Used by resourceRegistry to map SyncObject → list/upsert operations.
+ */
+type ResourceConfig = {
+  /** Function to list items from Stripe API */
+  listFn: (params: Stripe.PaginationParams & { created?: Stripe.RangeQueryParam }) => Promise<{
+    data: unknown[]
+    has_more: boolean
+  }>
+  /** Function to upsert items to database */
+  upsertFn: (
+    items: unknown[],
+    accountId: string,
+    backfillRelated?: boolean
+  ) => Promise<unknown[] | void>
+  /** Whether this resource's list API supports the 'created' filter */
+  supportsCreatedFilter: boolean
+}
 
 function getUniqueIds<T>(entries: T[], key: string): string[] {
   const set = new Set(
@@ -385,6 +407,90 @@ export class StripeSync {
     'review.opened': this.handleReviewEvent.bind(this),
     'entitlements.active_entitlement_summary.updated':
       this.handleEntitlementSummaryEvent.bind(this),
+  }
+
+  // Resource registry - maps SyncObject → list/upsert operations for processNext()
+  // Complements eventHandlers which maps event types → handlers for webhooks
+  // Both registries share the same underlying upsert methods
+  private readonly resourceRegistry: Record<string, ResourceConfig> = {
+    product: {
+      listFn: (p) => this.stripe.products.list(p),
+      upsertFn: (items, id) => this.upsertProducts(items as Stripe.Product[], id),
+      supportsCreatedFilter: true,
+    },
+    price: {
+      listFn: (p) => this.stripe.prices.list(p),
+      upsertFn: (items, id, bf) => this.upsertPrices(items as Stripe.Price[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    plan: {
+      listFn: (p) => this.stripe.plans.list(p),
+      upsertFn: (items, id, bf) => this.upsertPlans(items as Stripe.Plan[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    customer: {
+      listFn: (p) => this.stripe.customers.list(p),
+      upsertFn: (items, id) => this.upsertCustomers(items as Stripe.Customer[], id),
+      supportsCreatedFilter: true,
+    },
+    subscription: {
+      listFn: (p) => this.stripe.subscriptions.list(p),
+      upsertFn: (items, id, bf) => this.upsertSubscriptions(items as Stripe.Subscription[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    subscription_schedules: {
+      listFn: (p) => this.stripe.subscriptionSchedules.list(p),
+      upsertFn: (items, id, bf) =>
+        this.upsertSubscriptionSchedules(items as Stripe.SubscriptionSchedule[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    invoice: {
+      listFn: (p) => this.stripe.invoices.list(p),
+      upsertFn: (items, id, bf) => this.upsertInvoices(items as Stripe.Invoice[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    charge: {
+      listFn: (p) => this.stripe.charges.list(p),
+      upsertFn: (items, id, bf) => this.upsertCharges(items as Stripe.Charge[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    setup_intent: {
+      listFn: (p) => this.stripe.setupIntents.list(p),
+      upsertFn: (items, id, bf) => this.upsertSetupIntents(items as Stripe.SetupIntent[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    payment_intent: {
+      listFn: (p) => this.stripe.paymentIntents.list(p),
+      upsertFn: (items, id, bf) =>
+        this.upsertPaymentIntents(items as Stripe.PaymentIntent[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    dispute: {
+      listFn: (p) => this.stripe.disputes.list(p),
+      upsertFn: (items, id, bf) => this.upsertDisputes(items as Stripe.Dispute[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    early_fraud_warning: {
+      listFn: (p) => this.stripe.radar.earlyFraudWarnings.list(p),
+      upsertFn: (items, id) =>
+        this.upsertEarlyFraudWarning(items as Stripe.Radar.EarlyFraudWarning[], id),
+      supportsCreatedFilter: true,
+    },
+    refund: {
+      listFn: (p) => this.stripe.refunds.list(p),
+      upsertFn: (items, id, bf) => this.upsertRefunds(items as Stripe.Refund[], id, bf),
+      supportsCreatedFilter: true,
+    },
+    credit_note: {
+      listFn: (p) => this.stripe.creditNotes.list(p),
+      upsertFn: (items, id, bf) => this.upsertCreditNotes(items as Stripe.CreditNote[], id, bf),
+      supportsCreatedFilter: false, // credit_notes don't support created filter
+    },
+    checkout_sessions: {
+      listFn: (p) => this.stripe.checkout.sessions.list(p),
+      upsertFn: (items, id) => this.upsertCheckoutSessions(items as Stripe.Checkout.Session[], id),
+      supportsCreatedFilter: true,
+    },
   }
 
   async processEvent(event: Stripe.Event) {
@@ -846,7 +952,156 @@ export class StripeSync {
     }
   }
 
-  async syncBackfill(params?: SyncBackfillParams): Promise<SyncBackfill> {
+  /**
+   * Process one page of items for the specified object type.
+   * Returns the number of items processed and whether there are more pages.
+   *
+   * This method is designed for queue-based consumption where each page
+   * is processed as a separate job.
+   *
+   * @param object - The Stripe object type to sync (e.g., 'customer', 'product')
+   * @param params - Optional parameters for filtering (e.g., created date range)
+   * @returns ProcessNextResult with processed count and hasMore flag
+   *
+   * @example
+   * ```typescript
+   * // Queue worker
+   * const { hasMore } = await stripeSync.processNext('customer')
+   * if (hasMore) {
+   *   await queue.send({ object: 'customer' })
+   * }
+   * ```
+   */
+  async processNext(
+    object: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>,
+    params?: SyncParams
+  ): Promise<ProcessNextResult> {
+    // Ensure account exists before syncing
+    await this.getCurrentAccount()
+    const accountId = await this.getAccountId()
+
+    // Map object type to resource name (database table)
+    const resourceName = this.getResourceName(object)
+
+    // Get cursor for incremental sync
+    const cursor = params?.created
+      ? null
+      : await this.postgresClient.getSyncCursor(resourceName, accountId)
+
+    // Fetch one page and upsert
+    const result = await this.fetchOnePage(object, accountId, resourceName, cursor, params)
+
+    return result
+  }
+
+  /**
+   * Get the database resource name for a SyncObject type
+   */
+  private getResourceName(object: SyncObject): string {
+    const mapping: Record<string, string> = {
+      customer: 'customers',
+      invoice: 'invoices',
+      price: 'prices',
+      product: 'products',
+      subscription: 'subscriptions',
+      subscription_schedules: 'subscription_schedules',
+      setup_intent: 'setup_intents',
+      payment_method: 'payment_methods',
+      dispute: 'disputes',
+      charge: 'charges',
+      payment_intent: 'payment_intents',
+      plan: 'plans',
+      tax_id: 'tax_ids',
+      credit_note: 'credit_notes',
+      early_fraud_warning: 'early_fraud_warnings',
+      refund: 'refunds',
+      checkout_sessions: 'checkout_sessions',
+    }
+    return mapping[object] || object
+  }
+
+  /**
+   * Fetch one page of items from Stripe and upsert to database.
+   * Uses resourceRegistry for DRY list/upsert operations.
+   */
+  private async fetchOnePage(
+    object: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>,
+    accountId: string,
+    resourceName: string,
+    cursor: number | null,
+    params?: SyncParams
+  ): Promise<ProcessNextResult> {
+    const limit = 100 // Stripe page size
+
+    // Handle special cases that require customer context
+    if (object === 'payment_method' || object === 'tax_id') {
+      this.config.logger?.warn(`processNext for ${object} requires customer context`)
+      await this.postgresClient.markSyncComplete(resourceName, accountId)
+      return { processed: 0, hasMore: false }
+    }
+
+    // Look up config from registry
+    const config = this.resourceRegistry[object]
+    if (!config) {
+      throw new Error(`Unsupported object type for processNext: ${object}`)
+    }
+
+    // Mark sync as running
+    await this.postgresClient.markSyncRunning(resourceName, accountId)
+
+    try {
+      // Build list parameters
+      const listParams: Stripe.PaginationParams & { created?: Stripe.RangeQueryParam } = { limit }
+      if (config.supportsCreatedFilter) {
+        const created = params?.created ?? (cursor ? { gte: cursor } : undefined)
+        if (created) {
+          listParams.created = created
+        }
+      }
+
+      // Fetch from Stripe
+      const response = await config.listFn(listParams)
+
+      // Upsert the data
+      if (response.data.length > 0) {
+        this.config.logger?.info(`processNext: upserting ${response.data.length} ${resourceName}`)
+        await config.upsertFn(response.data, accountId, params?.backfillRelatedEntities)
+
+        // Update cursor with max created from this batch
+        const maxCreated = Math.max(
+          ...response.data.map((i) => (i as { created?: number }).created || 0)
+        )
+        if (maxCreated > 0) {
+          await this.postgresClient.updateSyncCursor(resourceName, accountId, maxCreated)
+        }
+      }
+
+      // Mark complete if no more pages
+      if (!response.has_more) {
+        await this.postgresClient.markSyncComplete(resourceName, accountId)
+      }
+
+      return {
+        processed: response.data.length,
+        hasMore: response.has_more,
+      }
+    } catch (error) {
+      await this.postgresClient.markSyncError(
+        resourceName,
+        accountId,
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+      throw error
+    }
+  }
+
+  /**
+   * Process all pages for all (or specified) object types until complete.
+   *
+   * @param params - Optional parameters for filtering and specifying object types
+   * @returns SyncBackfill with counts for each synced resource type
+   */
+  async processUntilDone(params?: SyncParams): Promise<SyncBackfill> {
     const { object } = params ?? { object: this.getSupportedEventTypes }
     let products,
       prices,
@@ -964,7 +1219,7 @@ export class StripeSync {
     }
   }
 
-  async syncProducts(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncProducts(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing products')
     const accountId = await this.getAccountId()
 
@@ -987,7 +1242,7 @@ export class StripeSync {
     )
   }
 
-  async syncPrices(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncPrices(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing prices')
     const accountId = await this.getAccountId()
 
@@ -1010,7 +1265,7 @@ export class StripeSync {
     )
   }
 
-  async syncPlans(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncPlans(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing plans')
     const accountId = await this.getAccountId()
 
@@ -1033,7 +1288,7 @@ export class StripeSync {
     )
   }
 
-  async syncCustomers(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncCustomers(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing customers')
     const accountId = await this.getAccountId()
 
@@ -1057,7 +1312,7 @@ export class StripeSync {
     )
   }
 
-  async syncSubscriptions(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncSubscriptions(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing subscriptions')
     const accountId = await this.getAccountId()
 
@@ -1080,7 +1335,7 @@ export class StripeSync {
     )
   }
 
-  async syncSubscriptionSchedules(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncSubscriptionSchedules(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing subscription schedules')
     const accountId = await this.getAccountId()
 
@@ -1104,7 +1359,7 @@ export class StripeSync {
     )
   }
 
-  async syncInvoices(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncInvoices(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing invoices')
     const accountId = await this.getAccountId()
 
@@ -1127,7 +1382,7 @@ export class StripeSync {
     )
   }
 
-  async syncCharges(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncCharges(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing charges')
     const accountId = await this.getAccountId()
 
@@ -1150,7 +1405,7 @@ export class StripeSync {
     )
   }
 
-  async syncSetupIntents(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncSetupIntents(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing setup_intents')
     const accountId = await this.getAccountId()
 
@@ -1173,7 +1428,7 @@ export class StripeSync {
     )
   }
 
-  async syncPaymentIntents(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncPaymentIntents(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing payment_intents')
     const accountId = await this.getAccountId()
 
@@ -1196,7 +1451,7 @@ export class StripeSync {
     )
   }
 
-  async syncTaxIds(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncTaxIds(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing tax_ids')
     const accountId = await this.getAccountId()
 
@@ -1209,7 +1464,7 @@ export class StripeSync {
     )
   }
 
-  async syncPaymentMethods(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncPaymentMethods(syncParams?: SyncParams): Promise<Sync> {
     // We can't filter by date here, it is also not possible to get payment methods without specifying a customer (you need Stripe Sigma for that -.-)
     // Thus, we need to loop through all customers
     this.config.logger?.info('Syncing payment method')
@@ -1253,7 +1508,7 @@ export class StripeSync {
     return { synced }
   }
 
-  async syncDisputes(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncDisputes(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing disputes')
     const accountId = await this.getAccountId()
 
@@ -1276,7 +1531,7 @@ export class StripeSync {
     )
   }
 
-  async syncEarlyFraudWarnings(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncEarlyFraudWarnings(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing early fraud warnings')
     const accountId = await this.getAccountId()
 
@@ -1300,7 +1555,7 @@ export class StripeSync {
     )
   }
 
-  async syncRefunds(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncRefunds(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing refunds')
     const accountId = await this.getAccountId()
 
@@ -1323,7 +1578,7 @@ export class StripeSync {
     )
   }
 
-  async syncCreditNotes(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncCreditNotes(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing credit notes')
     const accountId = await this.getAccountId()
 
@@ -1372,7 +1627,7 @@ export class StripeSync {
     )
   }
 
-  async syncCheckoutSessions(syncParams?: SyncBackfillParams): Promise<Sync> {
+  async syncCheckoutSessions(syncParams?: SyncParams): Promise<Sync> {
     this.config.logger?.info('Syncing checkout sessions')
     const accountId = await this.getAccountId()
 
