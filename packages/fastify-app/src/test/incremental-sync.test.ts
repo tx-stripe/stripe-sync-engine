@@ -596,9 +596,10 @@ describe('processUntilDone', () => {
 describe('Bug regression tests', () => {
   beforeEach(async () => {
     // Clean up test data before each test
-    await stripeSync.postgresClient.pool.query('DELETE FROM stripe.payment_intents WHERE id LIKE $1', [
-      'test_pi_%',
-    ])
+    await stripeSync.postgresClient.pool.query(
+      'DELETE FROM stripe.payment_intents WHERE id LIKE $1',
+      ['test_pi_%']
+    )
     await stripeSync.postgresClient.pool.query('DELETE FROM stripe.plans WHERE id LIKE $1', [
       'test_plan_%',
     ])
@@ -686,7 +687,12 @@ describe('Bug regression tests', () => {
     // This is expected - separate calls = separate runs.
 
     const products: Stripe.Product[] = [
-      { id: 'test_prod_run_1', object: 'product', created: 1704902400, name: 'P1' } as Stripe.Product,
+      {
+        id: 'test_prod_run_1',
+        object: 'product',
+        created: 1704902400,
+        name: 'P1',
+      } as Stripe.Product,
     ]
     const prices: Stripe.Price[] = [
       {
@@ -733,7 +739,12 @@ describe('Bug regression tests', () => {
     // and uses processNext internally for each object type.
 
     const products: Stripe.Product[] = [
-      { id: 'test_prod_detailed_1', object: 'product', created: 1704902400, name: 'P1' } as Stripe.Product,
+      {
+        id: 'test_prod_detailed_1',
+        object: 'product',
+        created: 1704902400,
+        name: 'P1',
+      } as Stripe.Product,
     ]
     const prices: Stripe.Price[] = [
       {
