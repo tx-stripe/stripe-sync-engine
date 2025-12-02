@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { PostgresClient } from './postgres'
 import { runMigrations } from './migrate'
-import pg from 'pg'
+import { PgAdapter } from './pg-adapter'
 
 describe('Observable Sync System Methods', () => {
   let postgresClient: PostgresClient
-  let pool: pg.Pool
+  let adapter: PgAdapter
   const testAccountId = 'acct_test_obs_123'
 
   beforeAll(async () => {
@@ -15,13 +15,14 @@ describe('Observable Sync System Methods', () => {
     // Run migrations to ensure schema and tables exist
     await runMigrations({ databaseUrl })
 
+    adapter = new PgAdapter({
+      connectionString: databaseUrl,
+    })
+
     postgresClient = new PostgresClient({
       schema: 'stripe',
-      poolConfig: {
-        connectionString: databaseUrl,
-      },
+      adapter,
     })
-    pool = postgresClient.pool
 
     // Ensure test account exists using the proper method
     await postgresClient.upsertAccount(
@@ -32,15 +33,19 @@ describe('Observable Sync System Methods', () => {
 
   afterAll(async () => {
     // Clean up test data
-    await pool.query('DELETE FROM stripe._sync_obj_run WHERE "_account_id" = $1', [testAccountId])
-    await pool.query('DELETE FROM stripe._sync_run WHERE "_account_id" = $1', [testAccountId])
-    await pool.end()
+    await adapter.query('DELETE FROM stripe._sync_obj_run WHERE "_account_id" = $1', [
+      testAccountId,
+    ])
+    await adapter.query('DELETE FROM stripe._sync_run WHERE "_account_id" = $1', [testAccountId])
+    await adapter.end()
   })
 
   beforeEach(async () => {
     // Clean up between tests
-    await pool.query('DELETE FROM stripe._sync_obj_run WHERE "_account_id" = $1', [testAccountId])
-    await pool.query('DELETE FROM stripe._sync_run WHERE "_account_id" = $1', [testAccountId])
+    await adapter.query('DELETE FROM stripe._sync_obj_run WHERE "_account_id" = $1', [
+      testAccountId,
+    ])
+    await adapter.query('DELETE FROM stripe._sync_run WHERE "_account_id" = $1', [testAccountId])
   })
 
   describe('getOrCreateSyncRun', () => {
