@@ -66,6 +66,10 @@ export class PostgresClient {
     return this.pool.query(text, params)
   }
 
+  async end(): Promise<void> {
+    return this.pool.end()
+  }
+
   async upsertMany<
     T extends {
       [Key: string]: any // eslint-disable-line @typescript-eslint/no-explicit-any
