@@ -2,15 +2,9 @@ import { SupabaseManagementAPI } from 'supabase-management-js'
 
 // Edge Function templates for Supabase deployment
 
-// Import base - override with STRIPE_SYNC_IMPORT_BASE env var for testing
-// Use explicit version to avoid Deno caching issues
-const IMPORT_BASE = process.env.STRIPE_SYNC_IMPORT_BASE || 'npm:stripe-experiment-sync@1.0.1'
-
-// Template function - projectRef will be replaced at deploy time
 export function getSetupFunctionCode(projectRef: string): string {
-  const importBase = IMPORT_BASE
   const webhookUrl = `https://${projectRef}.supabase.co/functions/v1/stripe-webhook`
-  return `import { StripeSync, runMigrations } from '${importBase}'
+  return `import { StripeSync, runMigrations } from 'npm:stripe-experiment-sync'
 
 const WEBHOOK_URL = '${webhookUrl}'
 
@@ -26,8 +20,12 @@ Deno.serve(async (req) => {
 
   let stripeSync = null
   try {
-    // Remove sslmode from connection string
+    // Get and validate database URL
     const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')
+    if (!rawDbUrl) {
+      throw new Error('SUPABASE_DB_URL environment variable is not set')
+    }
+    // Remove sslmode from connection string (not supported by pg in Deno)
     const dbUrl = rawDbUrl.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '')
 
     await runMigrations({ databaseUrl: dbUrl })
@@ -59,7 +57,9 @@ Deno.serve(async (req) => {
       try {
         await stripeSync.postgresClient.query('SELECT pg_advisory_unlock_all()')
         await stripeSync.postgresClient.pool.end()
-      } catch {}
+      } catch (cleanupErr) {
+        console.warn('Cleanup failed:', cleanupErr)
+      }
     }
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500,
@@ -71,15 +71,18 @@ Deno.serve(async (req) => {
 }
 
 export function getWebhookFunctionCode(): string {
-  const importBase = IMPORT_BASE
-  return `import { StripeSync } from '${importBase}'
+  return `import { StripeSync } from 'npm:stripe-experiment-sync'
 
-// Remove sslmode from connection string
-const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')!
+// Get and validate database URL at startup
+const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')
+if (!rawDbUrl) {
+  throw new Error('SUPABASE_DB_URL environment variable is not set')
+}
+// Remove sslmode from connection string (not supported by pg in Deno)
 const dbUrl = rawDbUrl.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '')
 
 const stripeSync = new StripeSync({
-  poolConfig: { connectionString: dbUrl, max: 5 },
+  poolConfig: { connectionString: dbUrl, max: 5 },  // Higher pool for concurrent webhook processing
   stripeSecretKey: Deno.env.get('STRIPE_SECRET_KEY')!,
 })
 
@@ -102,8 +105,12 @@ Deno.serve(async (req) => {
     })
   } catch (error) {
     console.error('Webhook processing error:', error)
+    // Use 400 for signature verification failures (client error),
+    // 500 for internal processing errors
+    const isSignatureError = error.message?.includes('signature') || error.type === 'StripeSignatureVerificationError'
+    const status = isSignatureError ? 400 : 500
     return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
+      status,
       headers: { 'Content-Type': 'application/json' },
     })
   }
@@ -112,14 +119,17 @@ Deno.serve(async (req) => {
 }
 
 export function getSchedulerFunctionCode(projectRef: string): string {
-  const importBase = IMPORT_BASE
   const workerUrl = `https://${projectRef}.supabase.co/functions/v1/stripe-worker`
-  return `import { StripeSync } from '${importBase}'
+  return `import { StripeSync } from 'npm:stripe-experiment-sync'
 
 const WORKER_URL = '${workerUrl}'
 
-// Remove sslmode from connection string
-const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')!
+// Get and validate database URL at startup
+const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')
+if (!rawDbUrl) {
+  throw new Error('SUPABASE_DB_URL environment variable is not set')
+}
+// Remove sslmode from connection string (not supported by pg in Deno)
 const dbUrl = rawDbUrl.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '')
 
 const stripeSync = new StripeSync({
@@ -165,18 +175,21 @@ Deno.serve(async (req) => {
 }
 
 export function getWorkerFunctionCode(projectRef: string): string {
-  const importBase = IMPORT_BASE
   const selfUrl = `https://${projectRef}.supabase.co/functions/v1/stripe-worker`
-  return `import { StripeSync } from '${importBase}'
+  return `import { StripeSync } from 'npm:stripe-experiment-sync'
 
 const SELF_URL = '${selfUrl}'
 
-// Remove sslmode from connection string
-const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')!
+// Get and validate database URL at startup
+const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')
+if (!rawDbUrl) {
+  throw new Error('SUPABASE_DB_URL environment variable is not set')
+}
+// Remove sslmode from connection string (not supported by pg in Deno)
 const dbUrl = rawDbUrl.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '')
 
 const stripeSync = new StripeSync({
-  poolConfig: { connectionString: dbUrl, max: 5 },
+  poolConfig: { connectionString: dbUrl, max: 5 },  // Higher pool for concurrent processing
   stripeSecretKey: Deno.env.get('STRIPE_SECRET_KEY')!,
 })
 
@@ -314,6 +327,11 @@ export class SupabaseDeployClient {
     // Get service role key to store in vault
     const serviceRoleKey = await this.getServiceRoleKey()
 
+    // Escape single quotes to prevent SQL injection
+    // While the service role key comes from a trusted source (Supabase API),
+    // it's best practice to escape any values interpolated into SQL
+    const escapedServiceRoleKey = serviceRoleKey.replace(/'/g, "''")
+
     const sql = `
       -- Enable pg_cron and pg_net extensions if not already enabled
       CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -322,7 +340,7 @@ export class SupabaseDeployClient {
       -- Store service role key in vault for pg_cron to use
       -- Delete existing secret if it exists, then create new one
       DELETE FROM vault.secrets WHERE name = 'stripe_sync_service_role_key';
-      SELECT vault.create_secret('${serviceRoleKey}', 'stripe_sync_service_role_key');
+      SELECT vault.create_secret('${escapedServiceRoleKey}', 'stripe_sync_service_role_key');
 
       -- Delete existing jobs if they exist
       SELECT cron.unschedule('stripe-sync-worker') WHERE EXISTS (
@@ -332,10 +350,11 @@ export class SupabaseDeployClient {
         SELECT 1 FROM cron.job WHERE jobname = 'stripe-sync-scheduler'
       );
 
-      -- Create job to invoke scheduler every 10 seconds
+      -- Create job to invoke scheduler every 30 seconds
+      -- This balances responsiveness with cost/resource efficiency
       SELECT cron.schedule(
         'stripe-sync-scheduler',
-        '10 seconds',
+        '30 seconds',
         $$
         SELECT net.http_post(
           url := 'https://${this.projectRef}.supabase.co/functions/v1/stripe-scheduler',
