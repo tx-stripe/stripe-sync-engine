@@ -47,7 +47,7 @@ describe('Edge Function Templates', () => {
   })
 
   describe('getWorkerFunctionCode', () => {
-    const code = getWorkerFunctionCode()
+    const code = getWorkerFunctionCode('test-project-ref')
 
     test('imports StripeSync from npm package', () => {
       expect(code).toMatch(/import \{ StripeSync \} from 'npm:stripe-experiment-sync(@[\d.]+)?'/)
@@ -76,8 +76,22 @@ describe('Edge Function Templates', () => {
       expect(code).toContain('status: 401')
     })
 
-    test('calls processNext to process pending work', () => {
-      expect(code).toContain('stripeSync.processNext()')
+    test('calls processNext with object to process pending work', () => {
+      expect(code).toContain('stripeSync.processNext(object)')
+    })
+
+    test('reads object from request body', () => {
+      expect(code).toContain('const { object } = body')
+    })
+
+    test('returns 400 if object is missing', () => {
+      expect(code).toContain('Missing object in request body')
+      expect(code).toContain('status: 400')
+    })
+
+    test('re-invokes self if hasMore is true', () => {
+      expect(code).toContain('if (result.hasMore)')
+      expect(code).toContain('SELF_URL')
     })
 
     test('returns 200 on success', () => {
