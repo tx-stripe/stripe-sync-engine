@@ -17,7 +17,6 @@ import {
 import { managedWebhookSchema } from './schemas/managed_webhook'
 import { type PoolConfig } from 'pg'
 import { createRetryableStripeClient } from './utils/stripeClientWrapper'
-import { sleep } from './utils/retry'
 import { hashApiKey } from './utils/hashApiKey'
 
 /**
