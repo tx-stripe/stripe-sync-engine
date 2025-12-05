@@ -117,7 +117,7 @@ function calculateDelay(
 /**
  * Sleeps for the specified number of milliseconds
  */
-function sleep(ms: number): Promise<void> {
+export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 

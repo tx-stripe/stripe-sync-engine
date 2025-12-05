@@ -540,8 +540,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     console.log(chalk.cyan('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'))
     console.log(chalk.cyan.bold('  Deployment Complete!'))
     console.log(chalk.cyan('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'))
-    console.log(chalk.white(`  Webhook URL: ${client.getWebhookUrl()}`))
-    console.log(chalk.gray('\n  Your Stripe data will now sync to your Supabase database.'))
+    console.log(chalk.gray('\n  Your Stripe data will stay in sync to your Supabase database.'))
     console.log(
       chalk.gray('  View your data in the Supabase dashboard under the "stripe" schema.\n')
     )
