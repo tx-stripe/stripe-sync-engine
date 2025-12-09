@@ -111,8 +111,8 @@ describe('Observable Sync System Methods', () => {
 
       // Check derived status via view
       const result = await pool.query(
-        `SELECT run_status as status, run_completed_at as completed_at FROM stripe.sync_dashboard
-         WHERE account_id = $1 AND run_started_at = $2 LIMIT 1`,
+        `SELECT status, completed_at FROM stripe.sync_dashboard
+         WHERE account_id = $1 AND started_at = $2`,
         [run!.accountId, run!.runStartedAt]
       )
 
@@ -542,7 +542,7 @@ describe('Observable Sync System Methods', () => {
         [run!.accountId, run!.runStartedAt]
       )
       expect(finalRun.rows[0].status).toBe('complete')
-      expect(finalRun.rows[0].processed_count).toBe(150) // 100 + 50
+      expect(Number(finalRun.rows[0].processed_count)).toBe(150) // 100 + 50
 
       // 7. Can start a new run now
       const newRun = await postgresClient.getOrCreateSyncRun(testAccountId, 'test')

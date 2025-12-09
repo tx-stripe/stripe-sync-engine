@@ -442,7 +442,7 @@ export class PostgresClient {
       [accountId]
     )
 
-    // Step 2: Close runs where all objects are done and no recent activity
+    // Step 2: Close runs where all objects are in terminal state (complete or error)
     await this.query(
       `UPDATE "${this.config.schema}"."_sync_run" r
        SET closed_at = now()
@@ -457,7 +457,7 @@ export class PostgresClient {
            SELECT 1 FROM "${this.config.schema}"."_sync_obj_run" o
            WHERE o."_account_id" = r."_account_id"
              AND o.run_started_at = r.started_at
-             AND o.updated_at >= now() - interval '5 minutes'
+             AND o.status IN ('pending', 'running')
          )`,
       [accountId]
     )
