@@ -227,8 +227,15 @@ for i in {1..60}; do
         -H "Content-Type: application/json" \
         -d "{\"query\": \"$SYNC_STATUS_QUERY\"}")
 
-    CLOSED_AT=$(echo "$SYNC_STATUS_RESULT" | jq -r '.[0].closed_at // empty')
-    STATUS=$(echo "$SYNC_STATUS_RESULT" | jq -r '.[0].status // "unknown"')
+    # Check if result is an array (successful query) or error object
+    if echo "$SYNC_STATUS_RESULT" | jq -e 'type == "array"' > /dev/null 2>&1; then
+        CLOSED_AT=$(echo "$SYNC_STATUS_RESULT" | jq -r '.[0].closed_at // empty')
+        STATUS=$(echo "$SYNC_STATUS_RESULT" | jq -r '.[0].status // "unknown"')
+    else
+        # Query failed (table doesn't exist yet or other error)
+        CLOSED_AT=""
+        STATUS="pending"
+    fi
 
     if [ -n "$CLOSED_AT" ] && [ "$CLOSED_AT" != "null" ]; then
         SYNC_COMPLETE=true
