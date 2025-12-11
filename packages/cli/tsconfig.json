@@ -2,9 +2,7 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "esnext",
-    "lib": [
-      "esnext"
-    ],
+    "lib": ["esnext"],
     "moduleResolution": "node",
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -17,16 +15,6 @@
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true
   },
-  "references": [
-    {
-      "path": "../sync-engine"
-    }
-  ],
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
