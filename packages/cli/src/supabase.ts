@@ -1,4 +1,3 @@
-import { runMigrations } from 'stripe-experiment-sync'
 import { SupabaseManagementAPI } from 'supabase-management-js'
 import { setupFunctionCode, webhookFunctionCode, workerFunctionCode } from './edge-function-code'
 export { setupFunctionCode, webhookFunctionCode, workerFunctionCode } from './edge-function-code'
