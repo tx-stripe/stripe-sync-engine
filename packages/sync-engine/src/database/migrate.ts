@@ -134,7 +134,11 @@ export async function runMigrations(config: MigrationConfig): Promise<void> {
     await connectAndMigrate(client, path.resolve(__dirname, './migrations'), config)
 
     // Get package version
-    const pkgPath = path.resolve(__dirname, '../../package.json')
+    // __dirname is different in dev (src/database/) vs prod (dist/)
+    const devPath = path.resolve(__dirname, '../../package.json') // from src/database/
+    const prodPath = path.resolve(__dirname, '../package.json') // from dist/
+    const pkgPath = fs.existsSync(prodPath) ? prodPath : devPath
+
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
     const version = pkg.version
 

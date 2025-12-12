@@ -45,6 +45,8 @@ const VALID_SYNC_OBJECTS: SyncObject[] = [
  * Backfill command - backfills a specific entity type from Stripe.
  */
 export async function backfillCommand(options: CliOptions, entityName: string): Promise<void> {
+  let stripeSync: StripeSync | null = null
+
   try {
     // Validate entity name
     if (!VALID_SYNC_OBJECTS.includes(entityName as SyncObject)) {
@@ -168,7 +170,7 @@ export async function backfillCommand(options: CliOptions, entityName: string): 
       keepAlive: true,
     }
 
-    const stripeSync = new StripeSync({
+    stripeSync = new StripeSync({
       databaseUrl: config.databaseUrl,
       stripeSecretKey: config.stripeApiKey,
       stripeApiVersion: process.env.STRIPE_API_VERSION || '2020-08-27',
