@@ -108,7 +108,7 @@ export async function runMigrations(config: MigrationConfig): Promise<void> {
       // If we get here, either not installed (false) or properly installed (true)
       // Both cases are fine to proceed with migrations
     } finally {
-      await checkClient.pool.end()
+      await checkClient.close()
     }
 
     // Ensure schema exists, not doing it via migration to not break current migration checksums

@@ -904,4 +904,12 @@ export class PostgresClient {
     )
     return parseInt(result.rows[0].count) === 0
   }
+
+  /**
+   * Closes the database connection pool and cleans up resources.
+   * Call this when you're done using the PostgresClient instance.
+   */
+  async close(): Promise<void> {
+    await this.pool.end()
+  }
 }

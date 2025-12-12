@@ -158,7 +158,7 @@ export async function backfillCommand(options: CliOptions, entityName: string): 
       }
       process.exit(1)
     } finally {
-      await checkClient.pool.end()
+      await checkClient.close()
     }
 
     // Create StripeSync instance
@@ -379,7 +379,7 @@ export async function syncCommand(options: CliOptions): Promise<void> {
       }
       process.exit(1)
     } finally {
-      await checkClient.pool.end()
+      await checkClient.close()
     }
 
     // 2. Create StripeSync instance
