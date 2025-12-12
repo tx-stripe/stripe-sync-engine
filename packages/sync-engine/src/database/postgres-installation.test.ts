@@ -141,7 +141,7 @@ describe('PostgresClient.isInstalled()', () => {
   })
 })
 
-describe('runMigrations() integration with isInstalled()', () => {
+describe.sequential('runMigrations() integration with isInstalled()', () => {
   let client: pg.Client
   const databaseUrl =
     process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:54322/postgres'

@@ -139,7 +139,9 @@ export async function runMigrations(config: MigrationConfig): Promise<void> {
     const version = pkg.version
 
     // Set schema comment with version info
-    await client.query(`COMMENT ON SCHEMA "${schema}" IS $1`, [`stripe-sync v${version} installed`])
+    // Note: COMMENT command doesn't support parameterized values like other queries
+    const comment = `stripe-sync v${version} installed`
+    await client.query(`COMMENT ON SCHEMA "${schema}" IS '${comment.replace(/'/g, "''")}'`)
 
     config.logger?.info(`Schema comment set: stripe-sync v${version}`)
   } catch (err) {
