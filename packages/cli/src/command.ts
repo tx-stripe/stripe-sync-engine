@@ -247,12 +247,17 @@ export async function migrateCommand(options: CliOptions): Promise<void> {
       })
       console.log(chalk.green('✓ Migrations completed successfully'))
     } catch (migrationError) {
-      // Migration failed - drop schema and retry
+      // Migration failed
       console.warn(chalk.yellow('Migrations failed.'))
-      console.warn(
-        'Migration error:',
-        migrationError instanceof Error ? migrationError.message : String(migrationError)
-      )
+      if (migrationError instanceof Error) {
+        const errorMsg = migrationError.message || migrationError.toString()
+        console.warn('Migration error:', errorMsg)
+        if (migrationError.stack) {
+          console.warn(chalk.gray(migrationError.stack))
+        }
+      } else {
+        console.warn('Migration error:', String(migrationError))
+      }
       throw migrationError
     }
   } catch (error) {
