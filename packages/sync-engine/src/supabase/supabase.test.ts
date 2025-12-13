@@ -244,4 +244,168 @@ describe('SupabaseDeployClient', () => {
       expect(client.getProjectUrl()).toBe(`https://${mockProjectRef}.api.custom-domain.com`)
     })
   })
+
+  describe('isInstalled()', () => {
+    it('should return false when schema does not exist', async () => {
+      const client = new SupabaseDeployClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock runSQL to return schema doesn't exist
+      const mockRunSQL = vi.fn().mockResolvedValueOnce([{ rows: [{ schema_exists: false }] }])
+      // @ts-expect-error - accessing private method for testing
+      client.runSQL = mockRunSQL
+
+      const installed = await client.isInstalled()
+
+      expect(installed).toBe(false)
+    })
+
+    it('should return false when schema exists but no migrations table', async () => {
+      const client = new SupabaseDeployClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock runSQL to return schema exists, but migrations table doesn't
+      const mockRunSQL = vi
+        .fn()
+        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
+        .mockResolvedValueOnce([{ rows: [{ table_exists: false }] }]) // migrations table doesn't exist
+      // @ts-expect-error - accessing private method for testing
+      client.runSQL = mockRunSQL
+
+      const installed = await client.isInstalled()
+
+      expect(installed).toBe(false)
+    })
+
+    it('should throw error when schema and migrations table exist but no comment', async () => {
+      const client = new SupabaseDeployClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock runSQL to return schema exists, migrations table exists, but no comment
+      const mockRunSQL = vi
+        .fn()
+        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
+        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ rows: [{ comment: null }] }]) // no comment
+      // @ts-expect-error - accessing private method for testing
+      client.runSQL = mockRunSQL
+
+      await expect(client.isInstalled()).rejects.toThrow(/Legacy installation detected/)
+    })
+
+    it('should throw error when schema and migrations table exist but comment missing stripe-sync', async () => {
+      const client = new SupabaseDeployClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock runSQL to return schema exists, migrations table exists, but wrong comment
+      const mockRunSQL = vi
+        .fn()
+        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
+        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ rows: [{ comment: 'some other tool' }] }]) // wrong comment
+      // @ts-expect-error - accessing private method for testing
+      client.runSQL = mockRunSQL
+
+      await expect(client.isInstalled()).rejects.toThrow(/Legacy installation detected/)
+    })
+
+    it('should return false when installation is in progress (installation:started)', async () => {
+      const client = new SupabaseDeployClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock runSQL to return in-progress installation
+      const mockRunSQL = vi
+        .fn()
+        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
+        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ rows: [{ comment: 'stripe-sync v1.0.0 installation:started' }] }]) // in progress
+      // @ts-expect-error - accessing private method for testing
+      client.runSQL = mockRunSQL
+
+      const installed = await client.isInstalled()
+
+      expect(installed).toBe(false)
+    })
+
+    it('should throw error when installation has failed (installation:error)', async () => {
+      const client = new SupabaseDeployClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock runSQL to return failed installation
+      const mockRunSQL = vi
+        .fn()
+        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
+        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([
+          {
+            rows: [{ comment: 'stripe-sync v1.0.0 installation:error - Something went wrong' }],
+          },
+        ]) // failed
+      // @ts-expect-error - accessing private method for testing
+      client.runSQL = mockRunSQL
+
+      try {
+        await client.isInstalled()
+        expect.fail('Should have thrown an error')
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error)
+        expect((error as Error).message).toContain('Installation failed')
+        expect((error as Error).message).toContain('uninstall and install again')
+      }
+    })
+
+    it('should return true when installation is complete', async () => {
+      const client = new SupabaseDeployClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock runSQL to return completed installation
+      const mockRunSQL = vi
+        .fn()
+        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
+        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ rows: [{ comment: 'stripe-sync v1.0.0 installed' }] }]) // installed
+      // @ts-expect-error - accessing private method for testing
+      client.runSQL = mockRunSQL
+
+      const installed = await client.isInstalled()
+
+      expect(installed).toBe(true)
+    })
+
+    it('should work with custom schema name', async () => {
+      const client = new SupabaseDeployClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock runSQL to return completed installation
+      const mockRunSQL = vi
+        .fn()
+        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
+        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ rows: [{ comment: 'stripe-sync v1.0.0 installed' }] }]) // installed
+      // @ts-expect-error - accessing private method for testing
+      client.runSQL = mockRunSQL
+
+      const installed = await client.isInstalled('custom_schema')
+
+      expect(installed).toBe(true)
+      // Verify the SQL queries included the custom schema name
+      expect(mockRunSQL).toHaveBeenCalledWith(expect.stringContaining('custom_schema'))
+    })
+  })
 })

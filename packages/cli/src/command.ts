@@ -506,7 +506,6 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       supabaseProjectRef: projectRef,
       stripeKey,
     })
-    console.log(chalk.green('✓ Deployment completed successfully'))
 
     // Print summary
     console.log(chalk.cyan('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'))
@@ -598,7 +597,6 @@ export async function uninstallCommand(options: DeployOptions): Promise<void> {
       supabaseProjectRef: projectRef,
       stripeKey,
     })
-    console.log(chalk.green('✓ Uninstall completed successfully'))
 
     // Print summary
     console.log(chalk.cyan('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'))

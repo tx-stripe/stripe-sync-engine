@@ -264,11 +264,28 @@ export class SupabaseDeployClient {
         )
       }
 
+      // Check for incomplete installation (can retry)
+      if (comment.includes('installation:started')) {
+        return false
+      }
+
+      // Check for failed installation (requires manual intervention)
+      if (comment.includes('installation:error')) {
+        throw new Error(
+          `Installation failed: Schema '${schema}' exists but installation encountered an error. ` +
+            `Comment: ${comment}. Please uninstall and install again.`
+        )
+      }
+
       // All checks passed
       return true
     } catch (error) {
-      // Re-throw our custom error
-      if (error instanceof Error && error.message.includes('Legacy installation detected')) {
+      // Re-throw our custom errors
+      if (
+        error instanceof Error &&
+        (error.message.includes('Legacy installation detected') ||
+          error.message.includes('Installation failed'))
+      ) {
         throw error
       }
       // Other errors return false
@@ -399,7 +416,7 @@ export async function install(params: {
     await client.runSQL(`CREATE SCHEMA IF NOT EXISTS stripe`)
 
     // Signal installation started
-    await client.updateInstallationComment('installation:started')
+    await client.updateInstallationComment(`stripe-sync v${pkg.version} installation:started`)
 
     // Deploy Edge Functions
     await client.deployFunction('stripe-setup', setupFunctionCode)
@@ -428,7 +445,7 @@ export async function install(params: {
     await client.updateInstallationComment(`stripe-sync v${pkg.version} installed`)
   } catch (error) {
     await client.updateInstallationComment(
-      `installation:error - ${error instanceof Error ? error.message : String(error)}`
+      `stripe-sync v${pkg.version} installation:error - ${error instanceof Error ? error.message : String(error)}`
     )
     throw error
   }
