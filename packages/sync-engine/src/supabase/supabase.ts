@@ -434,10 +434,22 @@ export class SupabaseSetupClient {
       }
 
       // Setup pg_cron
+      let pgCronEnabled = false
       try {
         await this.setupPgCronJob()
+        pgCronEnabled = true
       } catch {
-        // pg_cron may not be available
+        // pg_cron may not be available (requires special permissions)
+        console.warn('pg_cron setup failed - falling back to manual worker invocation')
+      }
+
+      // If pg_cron is not available, manually trigger the worker to start initial backfill
+      if (!pgCronEnabled) {
+        try {
+          await this.invokeFunction('stripe-worker', serviceRoleKey)
+        } catch (err) {
+          console.warn('Failed to trigger initial worker invocation:', err)
+        }
       }
 
       // Set final version comment
