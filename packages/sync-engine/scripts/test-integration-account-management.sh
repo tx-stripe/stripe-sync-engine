@@ -79,7 +79,7 @@ echo ""
 # Test 1.1: First API Fetch (verify via database)
 echo "TEST 1.1: First API Fetch"
 # Trigger account fetch (output doesn't matter, we verify via DB)
-npx tsx scripts/test-account-methods.ts get-account > /dev/null 2>&1 || true
+npx tsx scripts/test-account-methods.ts get-account 2>&1 || true
 
 # Get account from database (most recently synced)
 ACCOUNT_ID=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c \
