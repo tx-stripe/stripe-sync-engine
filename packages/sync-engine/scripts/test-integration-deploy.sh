@@ -54,7 +54,7 @@ cleanup() {
 
     # Use programmatic uninstall command to clean up all deployed resources
     echo "   Running uninstall command..."
-    node dist/index.js uninstall \
+    node dist/cli/index.js supabase uninstall \
         --token "$SUPABASE_ACCESS_TOKEN" \
         --project "$SUPABASE_PROJECT_REF" \
         --stripe-key "$STRIPE_API_KEY" > /dev/null 2>&1 || echo "   Warning: Failed to run uninstall"
@@ -122,7 +122,7 @@ echo ""
 
 # Run deploy command (no DB password needed - migrations run via Edge Function)
 echo "🚀 Running deploy command..."
-node dist/index.js deploy \
+node dist/cli/index.js supabase install \
     --token "$SUPABASE_ACCESS_TOKEN" \
     --project "$SUPABASE_PROJECT_REF" \
     --stripe-key "$STRIPE_API_KEY"
