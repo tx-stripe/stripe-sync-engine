@@ -346,19 +346,27 @@ describe('Incremental Sync', () => {
     expect(cursor).toBe(1704902400)
 
     // Status should be error in the new observability tables
-    // Use sync_dashboard view which derives status from object states
-    const status = await stripeSync.postgresClient.pool.query(
-      `SELECT d.status as run_status, d.error_message as run_error,
-              o.status as obj_status, o.error_message as obj_error
-       FROM stripe.sync_dashboard d
-       LEFT JOIN stripe._sync_obj_runs o ON o."_account_id" = d.account_id AND o.run_started_at = d.started_at
-       WHERE d.account_id = $1 AND o.object = $2
-       ORDER BY d.started_at DESC
+    // Check run status from sync_runs view
+    const runStatus = await stripeSync.postgresClient.pool.query(
+      `SELECT status, error_message FROM stripe.sync_runs
+       WHERE account_id = $1
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [testAccountId]
+    )
+    expect(runStatus.rows[0].status).toBe('error')
+    expect(runStatus.rows[0].error_message).toContain('Simulated sync error')
+
+    // Check object status from _sync_obj_runs table
+    const objStatus = await stripeSync.postgresClient.pool.query(
+      `SELECT status, error_message FROM stripe._sync_obj_runs
+       WHERE "_account_id" = $1 AND object = $2
+       ORDER BY run_started_at DESC
        LIMIT 1`,
       [testAccountId, 'products']
     )
-    expect(status.rows[0].run_status).toBe('error')
-    expect(status.rows[0].obj_error).toContain('Simulated sync error')
+    expect(objStatus.rows[0].status).toBe('error')
+    expect(objStatus.rows[0].error_message).toContain('Simulated sync error')
 
     // Second attempt should succeed
     callCount = 0
@@ -366,12 +374,11 @@ describe('Incremental Sync', () => {
 
     // Status should be complete
     const finalStatus = await stripeSync.postgresClient.pool.query(
-      `SELECT d.status FROM stripe.sync_dashboard d
-       JOIN stripe._sync_obj_runs o ON o."_account_id" = d.account_id AND o.run_started_at = d.started_at
-       WHERE d.account_id = $1 AND o.object = $2
-       ORDER BY d.started_at DESC
+      `SELECT status FROM stripe.sync_runs
+       WHERE account_id = $1
+       ORDER BY started_at DESC
        LIMIT 1`,
-      [testAccountId, 'products']
+      [testAccountId]
     )
     expect(finalStatus.rows[0].status).toBe('complete')
   })
