@@ -37,8 +37,8 @@ const ORDERED_STRIPE_TABLES = [
   'reviews',
   '_managed_webhooks',
   'customers',
-  '__sync_obj_runs', // Must be deleted before __sync_runs (foreign key)
-  '__sync_runs',
+  '_sync_obj_runs', // Must be deleted before _sync_runs (foreign key)
+  '_sync_runs',
 ] as const
 
 // Tables that use `account_id` instead of `_account_id` (migration 0049)

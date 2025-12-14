@@ -339,7 +339,7 @@ export class SupabaseSetupClient {
    * Removes all Edge Functions, secrets, database resources, and Stripe webhooks
    */
   async uninstall(stripeSecretKey: string): Promise<void> {
-    const stripe = new Stripe(stripeSecretKey, { apiVersion: '2025-05-28.basil' })
+    const stripe = new Stripe(stripeSecretKey, { apiVersion: '2025-02-24.acacia' })
 
     try {
       // Step 1: Get webhook IDs from database before dropping schema
