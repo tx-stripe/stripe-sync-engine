@@ -528,7 +528,7 @@ export class PostgresClient {
 
   /**
    * Get sync run config (for concurrency control).
-   * Status is derived from sync_dashboard view.
+   * Status is derived from sync_runs view.
    */
   async getSyncRun(
     accountId: string,
