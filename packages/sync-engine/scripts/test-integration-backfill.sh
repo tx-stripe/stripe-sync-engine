@@ -76,7 +76,7 @@ echo ""
 
 # Step 2: Run migrations
 echo "🗄️  Step 2: Running database migrations..."
-npm run dev migrate > /dev/null 2>&1
+node dist/cli/index.cjs migrate > /dev/null 2>&1
 echo "✓ Migrations completed"
 echo ""
 
@@ -185,7 +185,7 @@ echo "🔄 Step 4: Running backfill command..."
 echo "   Executing: stripe-sync backfill all"
 echo ""
 
-npm run dev backfill all
+node dist/cli/index.cjs backfill all
 
 echo ""
 echo "✓ Backfill command completed"
@@ -290,7 +290,7 @@ echo ""
 
 # Run second backfill (should be incremental)
 echo "   Running incremental backfill for products..."
-npm run dev backfill product
+node dist/cli/index.cjs backfill product
 
 echo ""
 echo "   Verifying incremental sync results..."

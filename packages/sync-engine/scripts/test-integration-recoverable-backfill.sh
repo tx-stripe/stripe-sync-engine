@@ -58,7 +58,7 @@ echo ""
 
 # Step 2: Run migrations
 echo "🗄️  Step 2: Running database migrations..."
-npm run dev migrate > /dev/null 2>&1
+node dist/cli/index.cjs migrate > /dev/null 2>&1
 echo "✓ Migrations completed"
 echo ""
 
@@ -90,7 +90,7 @@ echo ""
 
 echo "   Starting product backfill in background..."
 # Start sync in background and capture PID
-STRIPE_API_KEY=$STRIPE_API_KEY DATABASE_URL=$DATABASE_URL npm run dev backfill product > /tmp/sync-output.log 2>&1 &
+STRIPE_API_KEY=$STRIPE_API_KEY DATABASE_URL=$DATABASE_URL node dist/cli/index.cjs backfill product > /tmp/sync-output.log 2>&1 &
 SYNC_PID=$!
 echo "   Sync PID: $SYNC_PID"
 
@@ -186,7 +186,7 @@ echo "🔄 Step 6: Testing recovery from error..."
 echo ""
 
 echo "   Re-running product backfill (should recover)..."
-npm run dev backfill product
+node dist/cli/index.cjs backfill product
 
 echo ""
 

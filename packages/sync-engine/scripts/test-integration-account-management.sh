@@ -64,7 +64,7 @@ echo ""
 
 # Step 2: Run migrations
 echo "🗄️  Step 2: Running database migrations..."
-npm run dev migrate > /dev/null 2>&1
+node dist/cli/index.cjs migrate > /dev/null 2>&1
 echo "✓ Migrations completed"
 echo ""
 
@@ -216,8 +216,8 @@ echo "✓ Created 5 test customers"
 
 # Sync the test data to database
 echo "Setup: Syncing test data to database..."
-npm run dev -- backfill product > /dev/null 2>&1
-npm run dev -- backfill customer > /dev/null 2>&1
+node dist/cli/index.cjs backfill product > /dev/null 2>&1
+node dist/cli/index.cjs backfill customer > /dev/null 2>&1
 echo "✓ Test data synced"
 echo ""
 
