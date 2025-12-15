@@ -1268,7 +1268,7 @@ export class StripeSync {
    * @returns Run key and list of objects to sync
    */
   async joinOrCreateSyncRun(triggeredBy: string = 'worker'): Promise<{
-    runKey: RunKey,
+    runKey: RunKey
     objects: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>[]
   }> {
     await this.getCurrentAccount()
@@ -1282,14 +1282,14 @@ export class StripeSync {
       }
       return {
         runKey: { accountId: activeRun.accountId, runStartedAt: activeRun.runStartedAt },
-        objects: this.getSupportedSyncObjects()
+        objects: this.getSupportedSyncObjects(),
       }
     }
 
     const { accountId: runAccountId, runStartedAt } = result
     return {
       runKey: { accountId: runAccountId, runStartedAt },
-      objects: this.getSupportedSyncObjects()
+      objects: this.getSupportedSyncObjects(),
     }
   }
 

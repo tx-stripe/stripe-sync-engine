@@ -73,7 +73,9 @@ describe('joinOrCreateSyncRun', () => {
     mockGetOrCreateSyncRun.mockResolvedValue(null)
     mockGetActiveSyncRun.mockResolvedValue(null)
 
-    await expect(sync.joinOrCreateSyncRun('test')).rejects.toThrow('Failed to get or create sync run')
+    await expect(sync.joinOrCreateSyncRun('test')).rejects.toThrow(
+      'Failed to get or create sync run'
+    )
   })
 
   it('should use default triggeredBy value of "worker" if not provided', async () => {
