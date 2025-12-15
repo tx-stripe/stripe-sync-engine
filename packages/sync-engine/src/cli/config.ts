@@ -36,9 +36,11 @@ export async function loadConfig(options: CliOptions): Promise<Config> {
   config.databaseUrl = options.databaseUrl || process.env.DATABASE_URL || ''
 
   // Get Sigma sync option
-  if (options.enableSigmaSync !== undefined) {
-    config.enableSigmaSync = options.enableSigmaSync
-  }
+  config.enableSigmaSync =
+    options.enableSigmaSync ??
+    (process.env.ENABLE_SIGMA_SYNC !== undefined
+      ? process.env.ENABLE_SIGMA_SYNC === 'true'
+      : undefined)
 
   // Prompt for missing required values
   const questions = []
