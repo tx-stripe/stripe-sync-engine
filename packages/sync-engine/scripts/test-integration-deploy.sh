@@ -27,19 +27,13 @@ fi
 check_required_tools curl jq node
 
 # Check required environment variables (no DB password needed!)
-check_env_vars SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF STRIPE_API_KEY
+check_env_vars SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF STRIPE_API_KEY NPM_TOKEN
 
-# Check for NPM_TOKEN if we're in CI or if it's set
-if [ -n "$NPM_TOKEN" ]; then
-    echo "🔑 Configuring npm with NPM_TOKEN..."
-    echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-    echo "✓ npm configured"
-    echo ""
-elif [ -n "$CI" ]; then
-    echo "❌ Running in CI but NPM_TOKEN is not set"
-    echo "   Please set the NPM_TOKEN environment variable"
-    exit 1
-fi
+# Configure npm with NPM_TOKEN
+echo "🔑 Configuring npm with NPM_TOKEN..."
+echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+echo "✓ npm configured"
+echo ""
 
 # Track IDs for cleanup
 WEBHOOK_ID=""
