@@ -23,7 +23,7 @@ SELECT
   CASE
     -- Run still open (closed_at IS NULL)
     WHEN r.closed_at IS NULL AND COUNT(*) FILTER (WHERE o.status = 'running') > 0 THEN 'running'
-    WHEN r.closed_at IS NULL AND COUNT(o.*) = 0 THEN 'pending'
+    WHEN r.closed_at IS NULL AND (COUNT(o.*) = 0 OR COUNT(o.*) = COUNT(*) FILTER (WHERE o.status = 'pending')) THEN 'pending'
     WHEN r.closed_at IS NULL THEN 'running'
     -- Run closed (closed_at IS NOT NULL)
     WHEN COUNT(*) FILTER (WHERE o.status = 'error') > 0 THEN 'error'
