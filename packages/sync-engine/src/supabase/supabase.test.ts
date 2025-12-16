@@ -192,6 +192,78 @@ describe('SupabaseDeployClient', () => {
         `https://${mockProjectRef}.supabase.co/functions/v1/stripe-worker`
       )
     })
+
+    it('should use custom worker interval when specified', async () => {
+      const client = new SupabaseSetupClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock the API methods
+      const mockGetProjectApiKeys = vi
+        .fn()
+        .mockResolvedValue([{ name: 'service_role', api_key: 'test-service-key' }])
+      const mockRunQuery = vi.fn().mockResolvedValue(null)
+
+      // @ts-expect-error - accessing private api for testing
+      client.api.getProjectApiKeys = mockGetProjectApiKeys
+      // @ts-expect-error - accessing private api for testing
+      client.api.runQuery = mockRunQuery
+
+      await client.setupPgCronJob(120)
+
+      // Get the SQL that was executed
+      const executedSQL = mockRunQuery.mock.calls[0][1] as string
+
+      // Verify it contains the custom interval
+      expect(executedSQL).toContain("'120 seconds'")
+    })
+
+    it('should use default interval of 60 seconds when not specified', async () => {
+      const client = new SupabaseSetupClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock the API methods
+      const mockGetProjectApiKeys = vi
+        .fn()
+        .mockResolvedValue([{ name: 'service_role', api_key: 'test-service-key' }])
+      const mockRunQuery = vi.fn().mockResolvedValue(null)
+
+      // @ts-expect-error - accessing private api for testing
+      client.api.getProjectApiKeys = mockGetProjectApiKeys
+      // @ts-expect-error - accessing private api for testing
+      client.api.runQuery = mockRunQuery
+
+      await client.setupPgCronJob()
+
+      // Get the SQL that was executed
+      const executedSQL = mockRunQuery.mock.calls[0][1] as string
+
+      // Verify it contains the default interval
+      expect(executedSQL).toContain("'60 seconds'")
+    })
+
+    it('should reject invalid worker intervals', async () => {
+      const client = new SupabaseSetupClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      // Mock the API methods
+      const mockGetProjectApiKeys = vi
+        .fn()
+        .mockResolvedValue([{ name: 'service_role', api_key: 'test-service-key' }])
+
+      // @ts-expect-error - accessing private api for testing
+      client.api.getProjectApiKeys = mockGetProjectApiKeys
+
+      // Test various invalid inputs
+      await expect(client.setupPgCronJob(0)).rejects.toThrow('Invalid interval')
+      await expect(client.setupPgCronJob(-1)).rejects.toThrow('Invalid interval')
+      await expect(client.setupPgCronJob(1.5)).rejects.toThrow('Invalid interval')
+    })
   })
 
   describe('Edge Cases', () => {

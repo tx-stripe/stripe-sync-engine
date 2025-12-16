@@ -92,8 +92,14 @@ export class SupabaseSetupClient {
 
   /**
    * Setup pg_cron job to invoke worker function
+   * @param intervalSeconds - How often to run the worker (default: 60 seconds)
    */
-  async setupPgCronJob(): Promise<void> {
+  async setupPgCronJob(intervalSeconds: number = 60): Promise<void> {
+    // Validate interval
+    if (!Number.isInteger(intervalSeconds) || intervalSeconds < 1) {
+      throw new Error(`Invalid interval: ${intervalSeconds}. Must be a positive integer.`)
+    }
+
     // Get service role key to store in vault
     const serviceRoleKey = await this.getServiceRoleKey()
 
@@ -127,11 +133,11 @@ export class SupabaseSetupClient {
         SELECT 1 FROM cron.job WHERE jobname = 'stripe-sync-scheduler'
       );
 
-      -- Create job to invoke worker every 10 seconds
+      -- Create job to invoke worker at configured interval
       -- Worker reads from pgmq, enqueues objects if empty, and processes sync work
       SELECT cron.schedule(
         'stripe-sync-worker',
-        '10 seconds',
+        '${intervalSeconds} seconds',
         $$
         SELECT net.http_post(
           url := 'https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-worker',
@@ -427,7 +433,11 @@ export class SupabaseSetupClient {
     )
   }
 
-  async install(stripeKey: string, packageVersion?: string): Promise<void> {
+  async install(
+    stripeKey: string,
+    packageVersion?: string,
+    workerIntervalSeconds?: number
+  ): Promise<void> {
     const trimmedStripeKey = stripeKey.trim()
     if (!trimmedStripeKey.startsWith('sk_') && !trimmedStripeKey.startsWith('rk_')) {
       throw new Error('Stripe key should start with "sk_" or "rk_"')
@@ -470,7 +480,7 @@ export class SupabaseSetupClient {
       }
 
       // Setup pg_cron - this is required for automatic syncing
-      await this.setupPgCronJob()
+      await this.setupPgCronJob(workerIntervalSeconds)
 
       // Set final version comment
       await this.updateInstallationComment(
@@ -492,10 +502,17 @@ export async function install(params: {
   supabaseProjectRef: string
   stripeKey: string
   packageVersion?: string
+  workerIntervalSeconds?: number
   baseProjectUrl?: string
   baseManagementApiUrl?: string
 }): Promise<void> {
-  const { supabaseAccessToken, supabaseProjectRef, stripeKey, packageVersion } = params
+  const {
+    supabaseAccessToken,
+    supabaseProjectRef,
+    stripeKey,
+    packageVersion,
+    workerIntervalSeconds,
+  } = params
 
   const client = new SupabaseSetupClient({
     accessToken: supabaseAccessToken,
@@ -504,7 +521,7 @@ export async function install(params: {
     managementApiBaseUrl: params.baseManagementApiUrl,
   })
 
-  await client.install(stripeKey, packageVersion)
+  await client.install(stripeKey, packageVersion, workerIntervalSeconds)
 }
 
 export async function uninstall(params: {
