@@ -92,8 +92,39 @@ export class SupabaseSetupClient {
 
   /**
    * Setup pg_cron job to invoke worker function
+   * @param intervalSeconds - How often to run the worker (default: 60 seconds)
    */
-  async setupPgCronJob(): Promise<void> {
+  async setupPgCronJob(intervalSeconds: number = 60): Promise<void> {
+    // Validate interval
+    if (!Number.isInteger(intervalSeconds) || intervalSeconds < 1) {
+      throw new Error(`Invalid interval: ${intervalSeconds}. Must be a positive integer.`)
+    }
+
+    // Convert interval to pg_cron schedule format
+    // pg_cron supports two formats:
+    // 1. Interval format: '[1-59] seconds' (only for 1-59 seconds)
+    // 2. Cron format: '*/N * * * *' (for minutes and longer)
+    let schedule: string
+    if (intervalSeconds < 60) {
+      // Use interval format for sub-minute intervals
+      schedule = `${intervalSeconds} seconds`
+    } else if (intervalSeconds % 60 === 0) {
+      // Convert to minutes for intervals divisible by 60
+      const minutes = intervalSeconds / 60
+      if (minutes < 60) {
+        // Use cron format for minute-based intervals
+        schedule = `*/${minutes} * * * *`
+      } else {
+        throw new Error(
+          `Invalid interval: ${intervalSeconds}. Intervals >= 3600 seconds (1 hour) are not supported. Use a value between 1-3599 seconds.`
+        )
+      }
+    } else {
+      throw new Error(
+        `Invalid interval: ${intervalSeconds}. Must be either 1-59 seconds or a multiple of 60 (e.g., 60, 120, 180).`
+      )
+    }
+
     // Get service role key to store in vault
     const serviceRoleKey = await this.getServiceRoleKey()
 
@@ -127,11 +158,11 @@ export class SupabaseSetupClient {
         SELECT 1 FROM cron.job WHERE jobname = 'stripe-sync-scheduler'
       );
 
-      -- Create job to invoke worker every 10 seconds
+      -- Create job to invoke worker at configured interval
       -- Worker reads from pgmq, enqueues objects if empty, and processes sync work
       SELECT cron.schedule(
         'stripe-sync-worker',
-        '10 seconds',
+        '${schedule}',
         $$
         SELECT net.http_post(
           url := 'https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-worker',
@@ -373,10 +404,12 @@ export class SupabaseSetupClient {
       // Step 5: Unschedule pg_cron job
       try {
         await this.runSQL(`
-          SELECT cron.unschedule('stripe-sync-worker')
-          WHERE EXISTS (
-            SELECT 1 FROM cron.job WHERE jobname = 'stripe-sync-worker'
-          )
+          DO $$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'stripe-sync-worker') THEN
+              PERFORM cron.unschedule('stripe-sync-worker');
+            END IF;
+          END $$;
         `)
       } catch (err) {
         console.warn('Could not unschedule pg_cron job:', err)
@@ -392,22 +425,41 @@ export class SupabaseSetupClient {
         console.warn('Could not delete vault secret:', err)
       }
 
-      // Step 7: Terminate active connections to stripe schema tables
+      // Step 7: Terminate connections holding locks on stripe schema
       // This ensures any running pg_cron jobs or other queries release their locks
       try {
         await this.runSQL(`
           SELECT pg_terminate_backend(pid)
-          FROM pg_stat_activity
-          WHERE datname = current_database()
-            AND pid != pg_backend_pid()
-            AND query ILIKE '%stripe.%'
+          FROM pg_locks l
+          JOIN pg_class c ON l.relation = c.oid
+          JOIN pg_namespace n ON c.relnamespace = n.oid
+          WHERE n.nspname = 'stripe'
+            AND l.pid != pg_backend_pid()
         `)
       } catch (err) {
         console.warn('Could not terminate connections:', err)
       }
 
-      // Step 8: Drop schema (cascades to all tables, views, indexes, etc.)
-      await this.runSQL(`DROP SCHEMA IF EXISTS stripe CASCADE`)
+      // Step 8: Drop schema with retry (in case locks are still held)
+      let dropAttempts = 0
+      const maxAttempts = 3
+      while (dropAttempts < maxAttempts) {
+        try {
+          await this.runSQL(`DROP SCHEMA IF EXISTS stripe CASCADE`)
+          break // Success, exit loop
+        } catch (err) {
+          dropAttempts++
+          if (dropAttempts >= maxAttempts) {
+            throw new Error(
+              `Failed to drop schema after ${maxAttempts} attempts. ` +
+                `There may be active connections or locks on the stripe schema. ` +
+                `Error: ${err instanceof Error ? err.message : String(err)}`
+            )
+          }
+          // Wait 1 second before retrying
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+        }
+      }
     } catch (error) {
       throw new Error(`Uninstall failed: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -427,7 +479,11 @@ export class SupabaseSetupClient {
     )
   }
 
-  async install(stripeKey: string, packageVersion?: string): Promise<void> {
+  async install(
+    stripeKey: string,
+    packageVersion?: string,
+    workerIntervalSeconds?: number
+  ): Promise<void> {
     const trimmedStripeKey = stripeKey.trim()
     if (!trimmedStripeKey.startsWith('sk_') && !trimmedStripeKey.startsWith('rk_')) {
       throw new Error('Stripe key should start with "sk_" or "rk_"')
@@ -470,7 +526,7 @@ export class SupabaseSetupClient {
       }
 
       // Setup pg_cron - this is required for automatic syncing
-      await this.setupPgCronJob()
+      await this.setupPgCronJob(workerIntervalSeconds)
 
       // Set final version comment
       await this.updateInstallationComment(
@@ -492,10 +548,17 @@ export async function install(params: {
   supabaseProjectRef: string
   stripeKey: string
   packageVersion?: string
+  workerIntervalSeconds?: number
   baseProjectUrl?: string
   baseManagementApiUrl?: string
 }): Promise<void> {
-  const { supabaseAccessToken, supabaseProjectRef, stripeKey, packageVersion } = params
+  const {
+    supabaseAccessToken,
+    supabaseProjectRef,
+    stripeKey,
+    packageVersion,
+    workerIntervalSeconds,
+  } = params
 
   const client = new SupabaseSetupClient({
     accessToken: supabaseAccessToken,
@@ -504,7 +567,7 @@ export async function install(params: {
     managementApiBaseUrl: params.baseManagementApiUrl,
   })
 
-  await client.install(stripeKey, packageVersion)
+  await client.install(stripeKey, packageVersion, workerIntervalSeconds)
 }
 
 export async function uninstall(params: {
