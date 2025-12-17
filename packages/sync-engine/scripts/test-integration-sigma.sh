@@ -12,6 +12,9 @@ echo "🧪 Stripe Sync Engine Sigma Integration Test"
 echo "=============================================="
 echo ""
 
+# Check for required tools
+check_required_tools jq
+
 # Load environment variables
 load_env_file
 
@@ -21,10 +24,23 @@ check_env_vars DATABASE_URL STRIPE_API_KEY_3
 # Step 0: Start PostgreSQL if not running
 start_postgres "stripe-sync-test-db" "app_db"
 
+# Track created resources for cleanup
+declare -a PRODUCT_IDS=()
+
 # Cleanup function
 cleanup() {
     echo ""
     echo "🧹 Cleaning up..."
+
+    # Delete created Stripe resources
+    if [ ${#PRODUCT_IDS[@]} -gt 0 ]; then
+        echo "   Deleting test products from Stripe..."
+        for prod_id in "${PRODUCT_IDS[@]}"; do
+            curl -s -X DELETE "https://api.stripe.com/v1/products/${prod_id}" \
+                -u "${STRIPE_API_KEY_3}:" > /dev/null 2>&1 || true
+        done
+    fi
+
     stop_postgres "stripe-sync-test-db"
     echo "✓ Cleanup complete"
 }
@@ -42,36 +58,36 @@ STRIPE_API_KEY="$STRIPE_API_KEY_3" node dist/cli/index.js migrate > /dev/null 2>
 echo "✓ Migrations completed"
 echo ""
 
-echo "Step 3: Running Sigma sync for subscription_item_change_events_v2_beta..."
-echo "   Executing: stripe-sync backfill subscription_item_change_events_v2_beta"
+# Create a test product first (so backfill all has something to sync)
+echo "Step 3: Creating test product in Stripe..."
+PROD_JSON=$(curl -s -X POST https://api.stripe.com/v1/products \
+    -u "${STRIPE_API_KEY_3}:" \
+    -d "name=Sigma Test Product" \
+    -d "description=Integration test product for sigma test")
+PROD_ID=$(echo "$PROD_JSON" | jq -r '.id')
+PRODUCT_IDS+=("$PROD_ID")
+echo "   ✓ Created product: $PROD_ID"
 echo ""
 
-STRIPE_API_KEY="$STRIPE_API_KEY_3" ENABLE_SIGMA=true node dist/cli/index.js backfill subscription_item_change_events_v2_beta
-
-echo ""
-echo "Sigma sync for subscription_item_change_events_v2_beta completed"
+echo "Step 4: Running backfill all (syncs both sigma and non-sigma entities)..."
+echo "   Executing: stripe-sync backfill all"
 echo ""
 
-echo "Step 4: Running Sigma sync for exchange_rates_from_usd..."
-echo "   Executing: stripe-sync backfill exchange_rates_from_usd"
-echo ""
-
-STRIPE_API_KEY="$STRIPE_API_KEY_3" ENABLE_SIGMA=true node dist/cli/index.js backfill exchange_rates_from_usd
+STRIPE_API_KEY="$STRIPE_API_KEY_3" ENABLE_SIGMA=true node dist/cli/index.js backfill all
 
 echo ""
-echo " Sigma sync for exchange_rates_from_usd completed"
+echo "✓ Backfill all completed"
 echo ""
 
 # Step 5: Verify data in database
-echo "Step 5: Verifying Sigma data in database..."
+echo "Step 5: Verifying synced data in database..."
 echo ""
 
-# Check subscription_item_change_events_v2_beta table
+# Check subscription_item_change_events_v2_beta table (sigma)
 SICE_COUNT=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.subscription_item_change_events_v2_beta;" 2>/dev/null | tr -d ' ' || echo "0")
 echo "   subscription_item_change_events_v2_beta table: $SICE_COUNT rows"
 if [ "$SICE_COUNT" -gt 0 ]; then
-    echo "   ✓ Subscription item change events data successfully synced"
-    docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -c "SELECT event_timestamp, event_type, subscription_item_id FROM stripe.subscription_item_change_events_v2_beta LIMIT 3;" 2>/dev/null | head -n 7
+    echo "   ✓ Subscription item change events data successfully synced (sigma)"
 else
     echo "   ❌ Expected at least 1 row in subscription_item_change_events_v2_beta, found $SICE_COUNT"
     exit 1
@@ -79,14 +95,25 @@ fi
 
 echo ""
 
-# Check exchange_rates_from_usd table
+# Check exchange_rates_from_usd table (sigma)
 EXCHANGE_COUNT=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.exchange_rates_from_usd;" 2>/dev/null | tr -d ' ' || echo "0")
 echo "   exchange_rates_from_usd table: $EXCHANGE_COUNT rows"
 if [ "$EXCHANGE_COUNT" -gt 0 ]; then
-    echo "   ✓ Exchange rates data successfully synced"
-    docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -c "SELECT date, sell_currency, rate FROM stripe.exchange_rates_from_usd LIMIT 3;" 2>/dev/null | head -n 7
+    echo "   ✓ Exchange rates data successfully synced (sigma)"
 else
     echo "   ❌ Expected at least 1 row in exchange_rates_from_usd, found $EXCHANGE_COUNT"
+    exit 1
+fi
+
+echo ""
+
+# Check products table (non-sigma)
+PRODUCT_COUNT=$(docker exec $POSTGRES_CONTAINER psql -U postgres -d app_db -t -c "SELECT COUNT(*) FROM stripe.products WHERE id = '$PROD_ID';" 2>/dev/null | tr -d ' ' || echo "0")
+echo "   products table: checking test product $PROD_ID"
+if [ "$PRODUCT_COUNT" -eq 1 ]; then
+    echo "   ✓ Product data successfully synced (non-sigma)"
+else
+    echo "   ❌ Test product not found in database"
     exit 1
 fi
 
@@ -127,8 +154,9 @@ fi
 echo ""
 echo "=========================================="
 echo "Sigma Integration Test Completed!"
-echo "- ✓ Sigma sync for subscription_item_change_events_v2_beta completed ($SICE_COUNT rows)"
-echo "- ✓ Sigma sync for exchange_rates_from_usd completed ($EXCHANGE_COUNT rows)"
-echo "- ✓ Both tables have data (row count > 0)"
+echo "- ✓ backfill all synced both sigma and non-sigma entities"
+echo "- ✓ subscription_item_change_events_v2_beta: $SICE_COUNT rows (sigma)"
+echo "- ✓ exchange_rates_from_usd: $EXCHANGE_COUNT rows (sigma)"
+echo "- ✓ products: test product synced (non-sigma)"
 echo ""
 
