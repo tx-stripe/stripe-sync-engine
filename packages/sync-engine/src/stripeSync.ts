@@ -1944,7 +1944,7 @@ export class StripeSync {
         let synced = 0
 
         // Process customers in parallel chunks (configurable concurrency)
-        const chunkSize = this.config.maxConcurrentCustomers ?? 10
+        const chunkSize = this.config.maxConcurrentCustomers ?? 3
         for (const customerIdChunk of chunkArray(customerIds, chunkSize)) {
           await Promise.all(
             customerIdChunk.map(async (customerId) => {

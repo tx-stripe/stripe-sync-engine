@@ -24,6 +24,7 @@ export class SupabaseSetupClient {
   private api: SupabaseManagementAPI
   private projectRef: string
   private projectBaseUrl: string
+  private managementApiBaseUrl?: string
   private accessToken: string
 
   constructor(options: DeployClientOptions) {
@@ -33,6 +34,7 @@ export class SupabaseSetupClient {
     })
     this.projectRef = options.projectRef
     this.projectBaseUrl = options.projectBaseUrl || process.env.SUPABASE_BASE_URL || 'supabase.co'
+    this.managementApiBaseUrl = options.managementApiBaseUrl
     this.accessToken = options.accessToken
   }
 
@@ -433,8 +435,13 @@ export class SupabaseSetupClient {
       await this.deployFunction('stripe-webhook', versionedWebhook, false)
       await this.deployFunction('stripe-worker', versionedWorker, false)
 
-      // Set secrets
-      await this.setSecrets([{ name: 'STRIPE_SECRET_KEY', value: trimmedStripeKey }])
+      // Set secrets (Note: "secrets" is Supabase's mechanism for passing environment variables to edge functions)
+      const secrets = [{ name: 'STRIPE_SECRET_KEY', value: trimmedStripeKey }]
+      // Add SUPABASE_MANAGEMENT_URL if custom URL provided (for localhost/staging testing)
+      if (this.managementApiBaseUrl) {
+        secrets.push({ name: 'SUPABASE_MANAGEMENT_URL', value: this.managementApiBaseUrl })
+      }
+      await this.setSecrets(secrets)
 
       // Run setup (migrations + webhook creation)
       // Use accessToken for Management API validation
