@@ -11,7 +11,7 @@ export interface DeployClientOptions {
   accessToken: string
   projectRef: string
   projectBaseUrl?: string
-  managementApiBaseUrl?: string
+  supabaseManagementUrl?: string
 }
 
 export interface ProjectInfo {
@@ -24,17 +24,17 @@ export class SupabaseSetupClient {
   private api: SupabaseManagementAPI
   private projectRef: string
   private projectBaseUrl: string
-  private managementApiBaseUrl?: string
+  private supabaseManagementUrl?: string
   private accessToken: string
 
   constructor(options: DeployClientOptions) {
     this.api = new SupabaseManagementAPI({
       accessToken: options.accessToken,
-      baseUrl: options.managementApiBaseUrl,
+      baseUrl: options.supabaseManagementUrl,
     })
     this.projectRef = options.projectRef
     this.projectBaseUrl = options.projectBaseUrl || process.env.SUPABASE_BASE_URL || 'supabase.co'
-    this.managementApiBaseUrl = options.managementApiBaseUrl
+    this.supabaseManagementUrl = options.supabaseManagementUrl
     this.accessToken = options.accessToken
   }
 
@@ -438,8 +438,8 @@ export class SupabaseSetupClient {
       // Set secrets (Note: "secrets" is Supabase's mechanism for passing environment variables to edge functions)
       const secrets = [{ name: 'STRIPE_SECRET_KEY', value: trimmedStripeKey }]
       // Add SUPABASE_MANAGEMENT_URL if custom URL provided (for localhost/staging testing)
-      if (this.managementApiBaseUrl) {
-        secrets.push({ name: 'SUPABASE_MANAGEMENT_URL', value: this.managementApiBaseUrl })
+      if (this.supabaseManagementUrl) {
+        secrets.push({ name: 'SUPABASE_MANAGEMENT_URL', value: this.supabaseManagementUrl })
       }
       await this.setSecrets(secrets)
 
@@ -476,7 +476,7 @@ export async function install(params: {
   packageVersion?: string
   workerIntervalSeconds?: number
   baseProjectUrl?: string
-  baseManagementApiUrl?: string
+  supabaseManagementUrl?: string
 }): Promise<void> {
   const {
     supabaseAccessToken,
@@ -490,7 +490,7 @@ export async function install(params: {
     accessToken: supabaseAccessToken,
     projectRef: supabaseProjectRef,
     projectBaseUrl: params.baseProjectUrl,
-    managementApiBaseUrl: params.baseManagementApiUrl,
+    supabaseManagementUrl: params.supabaseManagementUrl,
   })
 
   await client.install(stripeKey, packageVersion, workerIntervalSeconds)
@@ -500,7 +500,7 @@ export async function uninstall(params: {
   supabaseAccessToken: string
   supabaseProjectRef: string
   baseProjectUrl?: string
-  baseManagementApiBaseUrl?: string
+  supabaseManagementUrl?: string
 }): Promise<void> {
   const { supabaseAccessToken, supabaseProjectRef } = params
 
@@ -508,7 +508,7 @@ export async function uninstall(params: {
     accessToken: supabaseAccessToken,
     projectRef: supabaseProjectRef,
     projectBaseUrl: params.baseProjectUrl,
-    managementApiBaseUrl: params.baseManagementApiBaseUrl,
+    supabaseManagementUrl: params.supabaseManagementUrl,
   })
 
   await client.uninstall()

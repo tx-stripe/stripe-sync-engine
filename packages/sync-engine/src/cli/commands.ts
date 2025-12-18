@@ -21,7 +21,7 @@ export interface DeployOptions {
   stripeKey?: string
   packageVersion?: string
   workerInterval?: number
-  baseManagementApiUrl?: string
+  supabaseManagementUrl?: string
 }
 
 export type { CliOptions }
@@ -569,7 +569,8 @@ export async function installCommand(options: DeployOptions): Promise<void> {
     console.log(chalk.blue('\n🚀 Installing Stripe Sync to Supabase Edge Functions...\n'))
 
     // Get management URL from options or environment variable
-    const baseManagementApiUrl = options.baseManagementApiUrl || process.env.SUPABASE_MANAGEMENT_URL
+    const supabaseManagementUrl =
+      options.supabaseManagementUrl || process.env.SUPABASE_MANAGEMENT_URL
 
     // Run installation via the install() function
     console.log(chalk.gray('Validating project access...'))
@@ -579,7 +580,7 @@ export async function installCommand(options: DeployOptions): Promise<void> {
       stripeKey,
       packageVersion: options.packageVersion,
       workerIntervalSeconds: options.workerInterval,
-      baseManagementApiUrl,
+      supabaseManagementUrl,
     })
 
     // Print summary
@@ -649,14 +650,15 @@ export async function uninstallCommand(options: DeployOptions): Promise<void> {
     console.log(chalk.yellow('⚠️  Warning: This will delete all Stripe data from your database!\n'))
 
     // Get management URL from options or environment variable
-    const baseManagementApiUrl = options.baseManagementApiUrl || process.env.SUPABASE_MANAGEMENT_URL
+    const supabaseManagementUrl =
+      options.supabaseManagementUrl || process.env.SUPABASE_MANAGEMENT_URL
 
     // Run uninstall via the uninstall() function
     console.log(chalk.gray('Removing all resources...'))
     await uninstall({
       supabaseAccessToken: accessToken,
       supabaseProjectRef: projectRef,
-      baseManagementApiUrl,
+      supabaseManagementUrl,
     })
 
     // Print summary

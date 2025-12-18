@@ -523,11 +523,11 @@ describe('SupabaseDeployClient', () => {
       const client = new SupabaseSetupClient({
         accessToken: mockAccessToken,
         projectRef: mockProjectRef,
-        managementApiBaseUrl: customUrl,
+        supabaseManagementUrl: customUrl,
       })
 
       // @ts-expect-error - accessing private property for testing
-      expect(client.managementApiBaseUrl).toBe(customUrl)
+      expect(client.supabaseManagementUrl).toBe(customUrl)
     })
 
     it('should set management URL as secret during install when provided', async () => {
@@ -536,7 +536,7 @@ describe('SupabaseDeployClient', () => {
       const client = new SupabaseSetupClient({
         accessToken: mockAccessToken,
         projectRef: mockProjectRef,
-        managementApiBaseUrl: 'http://localhost:54323',
+        supabaseManagementUrl: 'http://localhost:54323',
       })
 
       // Mock only what we need to test

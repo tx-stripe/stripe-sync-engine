@@ -88,7 +88,7 @@ supabase
       stripeKey: options.stripeKey,
       packageVersion: options.packageVersion,
       workerInterval: options.workerInterval,
-      baseManagementApiUrl: options.managementUrl,
+      supabaseManagementUrl: options.managementUrl,
     })
   })
 
@@ -105,7 +105,7 @@ supabase
     await uninstallCommand({
       supabaseAccessToken: options.token,
       supabaseProjectRef: options.project,
-      baseManagementApiUrl: options.managementUrl,
+      supabaseManagementUrl: options.managementUrl,
     })
   })
 
