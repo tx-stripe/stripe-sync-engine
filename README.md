@@ -106,20 +106,20 @@ npx stripe-experiment-sync backfill customer \
 
 ## Configuration Options
 
-| Option                          | Type    | Description                                                                                                                           |
-| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `poolConfig`                    | object  | **Required.** PostgreSQL connection pool configuration. Supports `connectionString`, `max`, `keepAlive`.                              |
-| `stripeSecretKey`               | string  | **Required.** Stripe secret key (sk_...)                                                                                              |
-| `stripeWebhookSecret`           | string  | Stripe webhook signing secret (only needed for manual webhook processing)                                                             |
-| `stripeApiVersion`              | string  | Stripe API version (default: `2020-08-27`)                                                                                            |
-| `enableSigma`                   | boolean | Enable Stripe Sigma reporting data sync. Default: false                                                                               |
-| `autoExpandLists`               | boolean | Fetch all list items from Stripe (not just the default 10)                                                                            |
-| `backfillRelatedEntities`       | boolean | Ensure related entities exist for foreign key integrity                                                                               |
-| `revalidateObjectsViaStripeApi` | Array   | Always fetch latest data from Stripe instead of trusting webhook payload                                                              |
-| `maxRetries`                    | number  | Maximum retry attempts for 429 rate limits. Default: 5                                                                                |
-| `initialRetryDelayMs`           | number  | Initial retry delay in milliseconds. Default: 1000                                                                                    |
-| `maxRetryDelayMs`               | number  | Maximum retry delay in milliseconds. Default: 60000                                                                                   |
-| `logger`                        | Logger  | Logger instance (pino-compatible)                                                                                                     |
+| Option                          | Type    | Description                                                                                              |
+| ------------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `poolConfig`                    | object  | **Required.** PostgreSQL connection pool configuration. Supports `connectionString`, `max`, `keepAlive`. |
+| `stripeSecretKey`               | string  | **Required.** Stripe secret key (sk\_...)                                                                |
+| `stripeWebhookSecret`           | string  | Stripe webhook signing secret (only needed for manual webhook processing)                                |
+| `stripeApiVersion`              | string  | Stripe API version (default: `2020-08-27`)                                                               |
+| `enableSigma`                   | boolean | Enable Stripe Sigma reporting data sync. Default: false                                                  |
+| `autoExpandLists`               | boolean | Fetch all list items from Stripe (not just the default 10)                                               |
+| `backfillRelatedEntities`       | boolean | Ensure related entities exist for foreign key integrity                                                  |
+| `revalidateObjectsViaStripeApi` | Array   | Always fetch latest data from Stripe instead of trusting webhook payload                                 |
+| `maxRetries`                    | number  | Maximum retry attempts for 429 rate limits. Default: 5                                                   |
+| `initialRetryDelayMs`           | number  | Initial retry delay in milliseconds. Default: 1000                                                       |
+| `maxRetryDelayMs`               | number  | Maximum retry delay in milliseconds. Default: 60000                                                      |
+| `logger`                        | Logger  | Logger instance (pino-compatible)                                                                        |
 
 ---
 
