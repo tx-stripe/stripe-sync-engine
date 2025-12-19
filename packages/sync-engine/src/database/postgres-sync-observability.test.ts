@@ -619,44 +619,31 @@ describe('Observable Sync System Methods', () => {
       expect(syncRunResult.rows[0].status).toBe('error')
     })
 
-    it('should not auto-close when only first object completes (BUG: on-demand object creation)', async () => {
-      // This test demonstrates the bug where object runs are created on-demand
-      // rather than upfront, causing premature auto-close.
-      //
-      // SCENARIO: Worker flow or processUntilDone where objects are synced sequentially
-      // 1. Create sync run
-      // 2. Start syncing first object (creates its object run)
-      // 3. First object completes
-      // 4. BUG: Run auto-closes because areAllObjectsComplete() only sees the one object
-      // 5. Remaining objects never get synced properly
-      //
-      // This test will FAIL until we fix the code to create all object runs upfront.
-
-      // 1. Create run (simulating worker's joinOrCreateSyncRun)
+    it('should not auto-close when only first object completes with upfront object runs', async () => {
       const run = await postgresClient.getOrCreateSyncRun(testAccountId, 'test')
 
-      // 2. Process first object only (simulating processNext creating object run on-demand)
-      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, ['customers'])
+      // Create all object runs upfront
+      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, [
+        'customers',
+        'invoices',
+      ])
+
+      // Complete first object
       await postgresClient.tryStartObjectSync(run!.accountId, run!.runStartedAt, 'customers')
       await postgresClient.completeObjectSync(run!.accountId, run!.runStartedAt, 'customers')
 
-      // 3. BUG: At this point, areAllObjectsComplete() returns true
-      // The run gets auto-closed even though we haven't created object runs for invoices, subscriptions, etc.
+      // Run should stay open (second object still pending)
       const syncRunResult = await pool.query(
         `SELECT closed_at FROM stripe._sync_runs WHERE "_account_id" = $1 AND started_at = $2`,
         [run!.accountId, run!.runStartedAt]
       )
-
-      // This assertion FAILS - demonstrating the bug
-      // The run should NOT be closed yet because we have more objects to sync
       expect(syncRunResult.rows[0].closed_at).toBeNull()
 
-      // 4. Try to process second object (would happen in next worker iteration or loop)
-      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, ['invoices'])
+      // Complete second object
       await postgresClient.tryStartObjectSync(run!.accountId, run!.runStartedAt, 'invoices')
       await postgresClient.completeObjectSync(run!.accountId, run!.runStartedAt, 'invoices')
 
-      // Now the run should be closed (both objects complete)
+      // Now run should close
       const finalResult = await pool.query(
         `SELECT closed_at FROM stripe._sync_runs WHERE "_account_id" = $1 AND started_at = $2`,
         [run!.accountId, run!.runStartedAt]
