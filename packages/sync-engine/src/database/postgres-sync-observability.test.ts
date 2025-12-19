@@ -618,5 +618,159 @@ describe('Observable Sync System Methods', () => {
       )
       expect(syncRunResult.rows[0].status).toBe('error')
     })
+
+    it('should not auto-close when only first object completes (BUG: on-demand object creation)', async () => {
+      // This test demonstrates the bug where object runs are created on-demand
+      // rather than upfront, causing premature auto-close.
+      //
+      // SCENARIO: Worker flow or processUntilDone where objects are synced sequentially
+      // 1. Create sync run
+      // 2. Start syncing first object (creates its object run)
+      // 3. First object completes
+      // 4. BUG: Run auto-closes because areAllObjectsComplete() only sees the one object
+      // 5. Remaining objects never get synced properly
+      //
+      // This test will FAIL until we fix the code to create all object runs upfront.
+
+      // 1. Create run (simulating worker's joinOrCreateSyncRun)
+      const run = await postgresClient.getOrCreateSyncRun(testAccountId, 'test')
+
+      // 2. Process first object only (simulating processNext creating object run on-demand)
+      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, ['customers'])
+      await postgresClient.tryStartObjectSync(run!.accountId, run!.runStartedAt, 'customers')
+      await postgresClient.completeObjectSync(run!.accountId, run!.runStartedAt, 'customers')
+
+      // 3. BUG: At this point, areAllObjectsComplete() returns true
+      // The run gets auto-closed even though we haven't created object runs for invoices, subscriptions, etc.
+      const syncRunResult = await pool.query(
+        `SELECT closed_at FROM stripe._sync_runs WHERE "_account_id" = $1 AND started_at = $2`,
+        [run!.accountId, run!.runStartedAt]
+      )
+
+      // This assertion FAILS - demonstrating the bug
+      // The run should NOT be closed yet because we have more objects to sync
+      expect(syncRunResult.rows[0].closed_at).toBeNull()
+
+      // 4. Try to process second object (would happen in next worker iteration or loop)
+      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, ['invoices'])
+      await postgresClient.tryStartObjectSync(run!.accountId, run!.runStartedAt, 'invoices')
+      await postgresClient.completeObjectSync(run!.accountId, run!.runStartedAt, 'invoices')
+
+      // Now the run should be closed (both objects complete)
+      const finalResult = await pool.query(
+        `SELECT closed_at FROM stripe._sync_runs WHERE "_account_id" = $1 AND started_at = $2`,
+        [run!.accountId, run!.runStartedAt]
+      )
+      expect(finalResult.rows[0].closed_at).not.toBeNull()
+    })
+  })
+
+  describe('Object Type vs Resource Name Consistency', () => {
+    it('should store resource names (plural) not object types (singular) in _sync_obj_runs', async () => {
+      // This test prevents the footgun where object types like 'product', 'customer'
+      // are mixed up with resource names like 'products', 'customers'
+
+      const run = await postgresClient.getOrCreateSyncRun(testAccountId, 'test')
+      expect(run).toBeTruthy()
+
+      // Create object runs with resource names (correct)
+      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, [
+        'products', // resource name (plural)
+        'customers', // resource name (plural)
+        'prices', // resource name (plural)
+      ])
+
+      // Query what was actually stored
+      const result = await pool!.query(
+        `SELECT object FROM stripe._sync_obj_runs
+         WHERE "_account_id" = $1 AND run_started_at = $2
+         ORDER BY object`,
+        [run!.accountId, run!.runStartedAt]
+      )
+
+      const storedObjects = result.rows.map((r) => r.object)
+
+      // Verify resource names (plural forms) are stored, not object types (singular)
+      expect(storedObjects).toEqual(['customers', 'prices', 'products'])
+
+      // These would be WRONG (singular object types):
+      expect(storedObjects).not.toContain('product')
+      expect(storedObjects).not.toContain('customer')
+      expect(storedObjects).not.toContain('price')
+    })
+
+    it('should reject object types if accidentally passed to createObjectRuns', async () => {
+      // This test verifies that if someone passes object types (singular) by mistake,
+      // it won't match what processNext expects (resource names/plural)
+
+      const run = await postgresClient.getOrCreateSyncRun(testAccountId, 'test')
+      expect(run).toBeTruthy()
+
+      // Accidentally create with object types (WRONG)
+      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, [
+        'product', // WRONG - object type (singular)
+      ])
+
+      // Try to query with resource name (what processNext uses)
+      const resourceNameResult = await pool!.query(
+        `SELECT object FROM stripe._sync_obj_runs
+         WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3`,
+        [run!.accountId, run!.runStartedAt, 'products'] // resource name (plural)
+      )
+
+      // Should NOT find it because we stored 'product' not 'products'
+      expect(resourceNameResult.rows.length).toBe(0)
+
+      // Can only find it with the wrong singular form
+      const objectTypeResult = await pool!.query(
+        `SELECT object FROM stripe._sync_obj_runs
+         WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3`,
+        [run!.accountId, run!.runStartedAt, 'product'] // object type (singular)
+      )
+
+      expect(objectTypeResult.rows.length).toBe(1)
+      expect(objectTypeResult.rows[0].object).toBe('product')
+
+      // This demonstrates the footgun: if createObjectRuns gets object types instead of
+      // resource names, processNext won't find the object runs it expects
+    })
+
+    it('should use consistent naming between createObjectRuns calls', async () => {
+      // Ensure that multiple calls to createObjectRuns use the same naming convention
+      // (all resource names, not a mix of object types and resource names)
+
+      const run = await postgresClient.getOrCreateSyncRun(testAccountId, 'test')
+      expect(run).toBeTruthy()
+
+      // First call with some resource names
+      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, [
+        'products',
+        'customers',
+      ])
+
+      // Second call (simulating processNext creating on-demand - though this shouldn't happen anymore)
+      await postgresClient.createObjectRuns(run!.accountId, run!.runStartedAt, ['prices'])
+
+      // Query all objects
+      const result = await pool!.query(
+        `SELECT object FROM stripe._sync_obj_runs
+         WHERE "_account_id" = $1 AND run_started_at = $2
+         ORDER BY object`,
+        [run!.accountId, run!.runStartedAt]
+      )
+
+      const allObjects = result.rows.map((r) => r.object)
+
+      // All should be resource names (plural)
+      expect(allObjects).toEqual(['customers', 'prices', 'products'])
+
+      // Verify they all follow the same pattern (plural resource names)
+      allObjects.forEach((obj) => {
+        // Resource names are plural (end with 's' or special cases)
+        expect(
+          obj.endsWith('s') || obj === 'tax_ids' || obj === 'early_fraud_warnings'
+        ).toBeTruthy()
+      })
+    })
   })
 })

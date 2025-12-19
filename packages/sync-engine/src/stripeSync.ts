@@ -1417,21 +1417,37 @@ export class StripeSync {
     const accountId = await this.getAccountId()
 
     const result = await this.postgresClient.getOrCreateSyncRun(accountId, triggeredBy)
+    const objects = this.getSupportedSyncObjects()
+
     if (!result) {
       const activeRun = await this.postgresClient.getActiveSyncRun(accountId)
       if (!activeRun) {
         throw new Error('Failed to get or create sync run')
       }
+      // Create all object runs upfront to prevent premature close
+      // Convert object types to resource names for database storage
+      await this.postgresClient.createObjectRuns(
+        activeRun.accountId,
+        activeRun.runStartedAt,
+        objects.map((obj) => this.getResourceName(obj))
+      )
       return {
         runKey: { accountId: activeRun.accountId, runStartedAt: activeRun.runStartedAt },
-        objects: this.getSupportedSyncObjects(),
+        objects,
       }
     }
 
     const { accountId: runAccountId, runStartedAt } = result
+    // Create all object runs upfront to prevent premature close
+    // Convert object types to resource names for database storage
+    await this.postgresClient.createObjectRuns(
+      runAccountId,
+      runStartedAt,
+      objects.map((obj) => this.getResourceName(obj))
+    )
     return {
       runKey: { accountId: runAccountId, runStartedAt },
-      objects: this.getSupportedSyncObjects(),
+      objects,
     }
   }
 
