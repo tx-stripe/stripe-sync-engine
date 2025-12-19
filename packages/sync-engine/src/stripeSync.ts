@@ -1407,9 +1407,13 @@ export class StripeSync {
    * This is used by workers and background processes that should cooperate.
    *
    * @param triggeredBy - What triggered this sync (for observability)
+   * @param objectFilter - Optional specific object to sync (e.g. 'payment_intent'). If 'all' or undefined, syncs all objects.
    * @returns Run key and list of objects to sync
    */
-  async joinOrCreateSyncRun(triggeredBy: string = 'worker'): Promise<{
+  async joinOrCreateSyncRun(
+    triggeredBy: string = 'worker',
+    objectFilter?: SyncObject
+  ): Promise<{
     runKey: RunKey
     objects: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>[]
   }> {
@@ -1417,14 +1421,19 @@ export class StripeSync {
     const accountId = await this.getAccountId()
 
     const result = await this.postgresClient.getOrCreateSyncRun(accountId, triggeredBy)
-    const objects = this.getSupportedSyncObjects()
+
+    // Determine which objects to create runs for
+    const objects =
+      objectFilter === 'all' || objectFilter === undefined
+        ? this.getSupportedSyncObjects()
+        : [objectFilter as Exclude<SyncObject, 'all' | 'customer_with_entitlements'>]
 
     if (!result) {
       const activeRun = await this.postgresClient.getActiveSyncRun(accountId)
       if (!activeRun) {
         throw new Error('Failed to get or create sync run')
       }
-      // Create all object runs upfront to prevent premature close
+      // Create object runs upfront to prevent premature close
       // Convert object types to resource names for database storage
       await this.postgresClient.createObjectRuns(
         activeRun.accountId,
@@ -1438,7 +1447,7 @@ export class StripeSync {
     }
 
     const { accountId: runAccountId, runStartedAt } = result
-    // Create all object runs upfront to prevent premature close
+    // Create object runs upfront to prevent premature close
     // Convert object types to resource names for database storage
     await this.postgresClient.createObjectRuns(
       runAccountId,
@@ -1454,8 +1463,8 @@ export class StripeSync {
   async processUntilDone(params?: SyncParams): Promise<SyncBackfill> {
     const { object } = params ?? { object: 'all' }
 
-    // Join or create sync run
-    const { runKey } = await this.joinOrCreateSyncRun('processUntilDone')
+    // Join or create sync run with object filter
+    const { runKey } = await this.joinOrCreateSyncRun('processUntilDone', object)
 
     return this.processUntilDoneWithRun(runKey.runStartedAt, object, params)
   }
