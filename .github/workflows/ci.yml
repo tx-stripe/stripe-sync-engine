@@ -175,7 +175,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      max-parallel: 1  # run sequentially to avoid ngrok domain conflicts
+      max-parallel: 1 # run sequentially to avoid ngrok domain conflicts
       matrix:
         test:
           - webhooks
@@ -222,7 +222,7 @@ jobs:
 
   integration-test-backfill:
     name: Integration (backfill)
-    needs: [build, integration-test]  # Wait for parallel tests to finish
+    needs: [build, integration-test] # Wait for parallel tests to finish
     runs-on: ubuntu-24.04
 
     steps:
