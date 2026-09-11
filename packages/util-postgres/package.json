@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@types/pg": "^8.15.5",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.11"
   },
   "files": [
     "src",
