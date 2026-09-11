@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.5.0",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.11"
   },
   "files": [
     "src",
